@@ -51,6 +51,7 @@ import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
 import { DatabaseModal } from './components/DatabaseModal';
 import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
 import { getCachedAccessToken, logoutGoogle } from './services/googleAuth';
+import { getSavedGasWebhookUrl } from './services/gasDriveWebhook';
 import {
   getOfflineQueue,
   saveToOfflineQueue,
@@ -244,7 +245,7 @@ export default function App() {
 
   // Inisialisasi status koneksi Google Drive saat aplikasi dimuat
   useEffect(() => {
-    setIsGoogleConnected(!!getCachedAccessToken());
+    setIsGoogleConnected(!!getCachedAccessToken() || !!getSavedGasWebhookUrl());
   }, []);
 
   // Initialize offline queue from localStorage on mount
