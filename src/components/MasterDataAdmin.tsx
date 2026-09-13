@@ -60,6 +60,7 @@ interface MasterDataAdminProps {
   onImportDUDI?: (newItems: DUDI[]) => void;
   onImportGuru?: (newItems: GuruPembimbing[]) => void;
   onSelectSiswaDetail?: (siswa: Siswa) => void;
+  onOpenDatabaseDetails?: () => void;
 }
 
 export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
@@ -76,6 +77,7 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
   onImportDUDI,
   onImportGuru,
   onSelectSiswaDetail,
+  onOpenDatabaseDetails,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'dudi' | 'siswa' | 'guru' | 'akun'>(() => {
     try {
@@ -540,7 +542,7 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
   return (
     <div className="space-y-4 max-w-4xl mx-auto pb-12">
       {/* Kartu Status Backend & MySQL Online */}
-      <DatabaseStatusCard />
+      <DatabaseStatusCard onOpenDetails={onOpenDatabaseDetails} />
 
       {/* Header card */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center justify-between">

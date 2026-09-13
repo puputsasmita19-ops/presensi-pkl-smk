@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   INITIAL_USERS,
   INITIAL_DUDI,
@@ -48,6 +48,7 @@ import { ProfilIndustriDUDI } from './components/ProfilIndustriDUDI';
 import { ArsitekturCodeViewer } from './components/ArsitekturCodeViewer';
 import { WhatsAppFonnteModal } from './components/WhatsAppFonnteModal';
 import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
+import { DatabaseModal } from './components/DatabaseModal';
 import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
 import { logoutFirebase, initAuth, getCachedAccessToken } from './services/firebase';
 import {
@@ -67,6 +68,8 @@ import {
   savePresensiToDb,
   fetchJurnalFromDb,
   saveJurnalToDb,
+  checkDbConnection,
+  DbStatusResponse,
 } from './utils/apiService';
 
 import {
@@ -93,7 +96,32 @@ export default function App() {
     return INITIAL_USERS[0]; // Budi Santoso (Admin)
   });
 
-  const [isGoogleConnected, setIsGoogleConnected] = useState<boolean>(false);
+  const [isGoogleConnected, setIsGoogleConnected] = useState<boolean>(() => {
+    return !!getCachedAccessToken();
+  });
+
+  // State Status Koneksi Backend & Database MySQL / TiDB
+  const [dbStatus, setDbStatus] = useState<DbStatusResponse | null>(null);
+  const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState<boolean>(false);
+
+  const refreshDbStatus = useCallback(async () => {
+    try {
+      const res = await checkDbConnection();
+      setDbStatus(res);
+    } catch {
+      setDbStatus({
+        connected: false,
+        configured: false,
+        message: 'Server backend offline',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshDbStatus();
+    const interval = setInterval(refreshDbStatus, 25000);
+    return () => clearInterval(interval);
+  }, [refreshDbStatus]);
 
   // Dark Mode / Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(getInitialTheme);
@@ -834,6 +862,8 @@ export default function App() {
         onTabChange={setActiveTab}
         onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
         onOpenGoogleDrive={() => setIsGoogleDriveModalOpen(true)}
+        onOpenDatabaseModal={() => setIsDatabaseModalOpen(true)}
+        dbStatus={dbStatus}
         onLogout={handleLogout}
         isGoogleConnected={isGoogleConnected}
         isOnline={isOnline}
@@ -944,6 +974,7 @@ export default function App() {
             onImportDUDI={handleImportDUDI}
             onImportGuru={handleImportGuru}
             onSelectSiswaDetail={handleOpenSiswaDetail}
+            onOpenDatabaseDetails={() => setIsDatabaseModalOpen(true)}
           />
         )}
 
@@ -1006,6 +1037,20 @@ export default function App() {
           jurnalList={jurnalList}
           siswaList={siswaList}
           dudiList={dudiList}
+          onConnectionChange={(connected) => setIsGoogleConnected(connected)}
+        />
+      )}
+
+      {/* Database MySQL / TiDB Modal - Khusus Admin */}
+      {currentUser.role === 'Admin' && (
+        <DatabaseModal
+          isOpen={isDatabaseModalOpen}
+          onClose={() => setIsDatabaseModalOpen(false)}
+          siswaList={siswaList}
+          dudiList={dudiList}
+          presensiList={presensiList}
+          jurnalList={jurnalList}
+          onRefreshData={refreshDbStatus}
         />
       )}
 

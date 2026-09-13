@@ -49,6 +49,11 @@ export const signInWithGoogle = async (): Promise<{
     const result = await signInWithPopup(auth, googleProvider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     cachedAccessToken = credential?.accessToken || null;
+    if (cachedAccessToken && typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('pkl_gdrive_access_token', cachedAccessToken);
+      } catch {}
+    }
     return {
       user: result.user,
       accessToken: cachedAccessToken,
@@ -62,11 +67,30 @@ export const signInWithGoogle = async (): Promise<{
 };
 
 export const getCachedAccessToken = (): string | null => {
-  return cachedAccessToken;
+  if (cachedAccessToken) return cachedAccessToken;
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = sessionStorage.getItem('pkl_gdrive_access_token');
+      if (stored) {
+        cachedAccessToken = stored;
+        return stored;
+      }
+    } catch {}
+  }
+  return null;
 };
 
 export const setCachedAccessToken = (token: string | null) => {
   cachedAccessToken = token;
+  if (typeof window !== 'undefined') {
+    try {
+      if (token) {
+        sessionStorage.setItem('pkl_gdrive_access_token', token);
+      } else {
+        sessionStorage.removeItem('pkl_gdrive_access_token');
+      }
+    } catch {}
+  }
 };
 
 export const logoutFirebase = async () => {
@@ -75,6 +99,6 @@ export const logoutFirebase = async () => {
   } catch (err) {
     console.warn('Sign out error:', err);
   } finally {
-    cachedAccessToken = null;
+    setCachedAccessToken(null);
   }
 };

@@ -176,13 +176,14 @@ async function initTablesIfConnected() {
 
 // ---------------------- API ROUTES ----------------------
 
-// 1. Status Koneksi MySQL
+// 1. Status Koneksi MySQL / TiDB Cloud
 app.get("/api/db/status", async (req, res) => {
   const isConfigured = Boolean(process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE);
   if (!isConfigured) {
     return res.json({
       connected: false,
       configured: false,
+      isTiDB: false,
       message: "Konfigurasi MySQL belum diatur di .env (MYSQL_HOST, MYSQL_USER, MYSQL_DATABASE)",
     });
   }
@@ -192,25 +193,232 @@ app.get("/api/db/status", async (req, res) => {
     return res.json({
       connected: false,
       configured: true,
+      isTiDB: Boolean(process.env.MYSQL_HOST?.includes("tidbcloud") || process.env.MYSQL_PORT === "4000"),
       message: "Gagal membuat pool koneksi MySQL",
     });
   }
 
   try {
-    const [rows]: any = await db.query("SELECT 1 AS connected, DATABASE() as db_name");
+    const start = Date.now();
+    const [rows]: any = await db.query("SELECT 1 AS connected, DATABASE() as db_name, VERSION() as version");
+    const latencyMs = Date.now() - start;
+
+    let tables: string[] = [];
+    try {
+      const [tableRows]: any = await db.query("SHOW TABLES");
+      tables = tableRows.map((tr: any) => Object.values(tr)[0]);
+    } catch {}
+
+    const isTiDB = Boolean(
+      process.env.MYSQL_HOST?.includes("tidbcloud") ||
+      process.env.MYSQL_PORT === "4000" ||
+      String(rows[0]?.version || "").toLowerCase().includes("tidb")
+    );
+
     return res.json({
       connected: true,
       configured: true,
       database: rows[0]?.db_name || process.env.MYSQL_DATABASE,
       host: process.env.MYSQL_HOST,
-      message: "Terhubung online ke database MySQL",
+      port: Number(process.env.MYSQL_PORT) || 3306,
+      ssl: process.env.MYSQL_SSL === "true" || process.env.MYSQL_SSL === "1",
+      latencyMs,
+      tables,
+      isTiDB,
+      version: rows[0]?.version || "MySQL 8.x Compatible",
+      message: isTiDB
+        ? "Terhubung aktif ke TiDB Cloud Serverless Distributed SQL"
+        : "Terhubung aktif ke database MySQL Online",
     });
   } catch (error: any) {
     return res.status(500).json({
       connected: false,
       configured: true,
+      isTiDB: Boolean(process.env.MYSQL_HOST?.includes("tidbcloud") || process.env.MYSQL_PORT === "4000"),
       message: "Gagal menyambung ke MySQL: " + error.message,
     });
+  }
+});
+
+// Endpoint Mass Sync: Mengunggah data lokal ke MySQL sekaligus
+app.post("/api/db/sync-all", async (req, res) => {
+  const db = getDbPool();
+  if (!db) {
+    return res.status(503).json({ error: "MySQL belum terhubung. Konfigurasi kredensial terlebih dahulu." });
+  }
+
+  try {
+    const { siswa = [], dudi = [], presensi = [], jurnal = [] } = req.body;
+    let syncedCounts = { siswa: 0, dudi: 0, presensi: 0, jurnal: 0 };
+
+    // 1. Sync DUDI
+    for (const d of dudi) {
+      if (!d.id_dudi || !d.nama_instansi) continue;
+      await db.execute(
+        `INSERT INTO dudi (
+          id_dudi, nama_instansi, bidang, alamat, latitude, longitude,
+          radius_meter, hari_kerja, tipe_jadwal, daftar_shift, jam_masuk_standar, jam_pulang_standar
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          nama_instansi = VALUES(nama_instansi),
+          bidang = VALUES(bidang),
+          alamat = VALUES(alamat),
+          latitude = VALUES(latitude),
+          longitude = VALUES(longitude),
+          radius_meter = VALUES(radius_meter),
+          hari_kerja = VALUES(hari_kerja),
+          tipe_jadwal = VALUES(tipe_jadwal),
+          daftar_shift = VALUES(daftar_shift),
+          jam_masuk_standar = VALUES(jam_masuk_standar),
+          jam_pulang_standar = VALUES(jam_pulang_standar)`,
+        [
+          d.id_dudi,
+          d.nama_instansi,
+          d.bidang || "",
+          d.alamat || "",
+          d.koordinat_lokasi?.latitude || 0,
+          d.koordinat_lokasi?.longitude || 0,
+          d.radius_meter || 100,
+          JSON.stringify(d.hari_kerja || ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]),
+          d.tipe_jadwal || "Reguler",
+          JSON.stringify(d.daftar_shift || []),
+          d.jam_masuk_standar || "08:00",
+          d.jam_pulang_standar || "16:30",
+        ]
+      );
+      syncedCounts.dudi++;
+    }
+
+    // 2. Sync Siswa
+    for (const s of siswa) {
+      if (!s.id_siswa || !s.nama_lengkap || !s.nis) continue;
+      await db.execute(
+        `INSERT INTO siswa (
+          id_siswa, id_user, nama_lengkap, nis, kelas, jurusan,
+          id_dudi, id_guru_pembimbing, nomor_wa, nomor_wa_ortu, alamat, email
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          nama_lengkap = VALUES(nama_lengkap),
+          kelas = VALUES(kelas),
+          jurusan = VALUES(jurusan),
+          id_dudi = VALUES(id_dudi),
+          id_guru_pembimbing = VALUES(id_guru_pembimbing),
+          nomor_wa = VALUES(nomor_wa),
+          nomor_wa_ortu = VALUES(nomor_wa_ortu),
+          alamat = VALUES(alamat),
+          email = VALUES(email)`,
+        [
+          s.id_siswa,
+          s.id_user || "",
+          s.nama_lengkap,
+          s.nis,
+          s.kelas || "",
+          s.jurusan || "",
+          s.id_dudi || "",
+          s.id_guru_pembimbing || "",
+          s.nomor_wa || "",
+          s.nomor_wa_ortu || "",
+          s.alamat || "",
+          s.email || "",
+        ]
+      );
+      syncedCounts.siswa++;
+    }
+
+    // 3. Sync Presensi
+    for (const p of presensi) {
+      if (!p.id_presensi || !p.id_siswa || !p.tanggal) continue;
+      await db.execute(
+        `INSERT INTO presensi (
+          id_presensi, id_siswa, tanggal, hari, jam_masuk, jam_pulang, status,
+          foto_selfie, latitude, longitude, jarak_meter, dalam_radius,
+          id_shift, nama_shift, status_ketepatan, keterangan,
+          status_persetujuan_dudi, catatan_dudi, disetujui_dudi_pada, nama_pembimbing_dudi
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          jam_pulang = VALUES(jam_pulang),
+          status = VALUES(status),
+          foto_selfie = VALUES(foto_selfie),
+          status_ketepatan = VALUES(status_ketepatan),
+          keterangan = VALUES(keterangan),
+          status_persetujuan_dudi = VALUES(status_persetujuan_dudi),
+          catatan_dudi = VALUES(catatan_dudi),
+          disetujui_dudi_pada = VALUES(disetujui_dudi_pada),
+          nama_pembimbing_dudi = VALUES(nama_pembimbing_dudi)`,
+        [
+          p.id_presensi,
+          p.id_siswa,
+          p.tanggal,
+          p.hari || "",
+          p.jam_masuk || "08:00",
+          p.jam_pulang || null,
+          p.status || "Hadir Tepat Waktu",
+          p.foto_selfie || "",
+          p.koordinat_absen?.latitude || 0,
+          p.koordinat_absen?.longitude || 0,
+          p.koordinat_absen?.jarak_meter || 0,
+          p.koordinat_absen?.dalam_radius ? 1 : 0,
+          p.id_shift || null,
+          p.nama_shift || null,
+          p.status_ketepatan || null,
+          p.keterangan || null,
+          p.status_persetujuan_dudi || "Menunggu",
+          p.catatan_dudi || null,
+          p.disetujui_dudi_pada || null,
+          p.nama_pembimbing_dudi || null,
+        ]
+      );
+      syncedCounts.presensi++;
+    }
+
+    // 4. Sync Jurnal
+    for (const j of jurnal) {
+      if (!j.id_jurnal || !j.id_siswa || !j.tanggal) continue;
+      await db.execute(
+        `INSERT INTO jurnal (
+          id_jurnal, id_siswa, tanggal, deskripsi_kegiatan, kendala, solusi,
+          status_validasi_guru, catatan_guru, validated_at, nama_guru_penilai,
+          status_validasi_dudi, catatan_dudi, validated_dudi_at, nama_dudi_penilai
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          deskripsi_kegiatan = VALUES(deskripsi_kegiatan),
+          kendala = VALUES(kendala),
+          solusi = VALUES(solusi),
+          status_validasi_guru = VALUES(status_validasi_guru),
+          catatan_guru = VALUES(catatan_guru),
+          validated_at = VALUES(validated_at),
+          nama_guru_penilai = VALUES(nama_guru_penilai),
+          status_validasi_dudi = VALUES(status_validasi_dudi),
+          catatan_dudi = VALUES(catatan_dudi),
+          validated_dudi_at = VALUES(validated_dudi_at),
+          nama_dudi_penilai = VALUES(nama_dudi_penilai)`,
+        [
+          j.id_jurnal,
+          j.id_siswa,
+          j.tanggal,
+          j.deskripsi_kegiatan || "",
+          j.kendala || "",
+          j.solusi || "",
+          j.status_validasi_guru || "Menunggu",
+          j.catatan_guru || null,
+          j.validated_at || null,
+          j.nama_guru_penilai || null,
+          j.status_validasi_dudi || "Menunggu",
+          j.catatan_dudi || null,
+          j.validated_dudi_at || null,
+          j.nama_dudi_penilai || null,
+        ]
+      );
+      syncedCounts.jurnal++;
+    }
+
+    res.json({
+      success: true,
+      message: "Sinkronisasi massal ke database MySQL berhasil.",
+      syncedCounts,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Gagal sinkronisasi data: " + err.message });
   }
 });
 

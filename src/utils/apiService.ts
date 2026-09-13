@@ -6,6 +6,12 @@ export interface DbStatusResponse {
   configured: boolean;
   database?: string;
   host?: string;
+  port?: number;
+  ssl?: boolean;
+  latencyMs?: number;
+  tables?: string[];
+  isTiDB?: boolean;
+  version?: string;
   message: string;
 }
 
@@ -17,6 +23,7 @@ export const checkDbConnection = async (): Promise<DbStatusResponse> => {
       return {
         connected: false,
         configured: data.configured ?? false,
+        isTiDB: data.isTiDB ?? false,
         message: data.message || `Gagal memeriksa koneksi (HTTP ${res.status})`,
       };
     }
@@ -25,7 +32,50 @@ export const checkDbConnection = async (): Promise<DbStatusResponse> => {
     return {
       connected: false,
       configured: false,
+      isTiDB: false,
       message: 'Server backend belum aktif atau tidak dapat dijangkau.',
+    };
+  }
+};
+
+// MASS SYNC: Kirim semua data lokal ke MySQL / TiDB
+export interface SyncAllPayload {
+  siswa: Siswa[];
+  dudi: DUDI[];
+  presensi: Presensi[];
+  jurnal: JurnalHarian[];
+}
+
+export interface SyncAllResult {
+  success: boolean;
+  message: string;
+  syncedCounts?: {
+    siswa: number;
+    dudi: number;
+    presensi: number;
+    jurnal: number;
+  };
+}
+
+export const syncAllDataToDb = async (payload: SyncAllPayload): Promise<SyncAllResult> => {
+  try {
+    const res = await fetch('/api/db/sync-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        message: data.error || `Gagal sinkronisasi (HTTP ${res.status})`,
+      };
+    }
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Koneksi ke backend terputus saat sinkronisasi.',
     };
   }
 };

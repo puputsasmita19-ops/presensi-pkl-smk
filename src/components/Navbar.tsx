@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { User, Role } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
 import { RealtimeClockBar } from './RealtimeClockBar';
+import { DbStatusResponse } from '../utils/apiService';
 import {
   Camera,
   BookOpen,
@@ -33,6 +34,8 @@ interface NavbarProps {
   onTabChange: (tab: string) => void;
   onOpenWhatsAppModal: () => void;
   onOpenGoogleDrive?: () => void;
+  onOpenDatabaseModal?: () => void;
+  dbStatus?: DbStatusResponse | null;
   onLogout?: () => void;
   isGoogleConnected?: boolean;
   isOnline?: boolean;
@@ -51,6 +54,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onTabChange,
   onOpenWhatsAppModal,
   onOpenGoogleDrive,
+  onOpenDatabaseModal,
+  dbStatus,
   onLogout,
   isGoogleConnected,
   isOnline = true,
@@ -252,20 +257,91 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
+          {/* Status Backend & Database MySQL / TiDB Cloud - Khusus Admin */}
+          {currentUser.role === 'Admin' && onOpenDatabaseModal && (
+            <button
+              id="btn-open-database-status"
+              type="button"
+              onClick={onOpenDatabaseModal}
+              className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 ${
+                dbStatus?.connected
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                  : dbStatus?.configured
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                  : 'bg-slate-800/90 text-indigo-300 border-slate-700 hover:text-white hover:bg-slate-700'
+              }`}
+              title={
+                dbStatus?.connected
+                  ? `Database: ${dbStatus.isTiDB ? 'TiDB Cloud Online' : 'MySQL Online'} (Latency: ${dbStatus.latencyMs ?? 0}ms). Klik untuk cek detail.`
+                  : dbStatus?.configured
+                  ? 'Database MySQL: Gagal tersambung ke host. Klik untuk cek diagnostik.'
+                  : 'Database MySQL / TiDB: Siap dikonfigurasi. Klik untuk panduan online.'
+              }
+              aria-label="Status Database MySQL"
+            >
+              <div className="relative flex items-center justify-center">
+                <Database
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                    dbStatus?.connected
+                      ? 'text-emerald-400'
+                      : dbStatus?.configured
+                      ? 'text-amber-400'
+                      : 'text-indigo-400'
+                  }`}
+                />
+                <span
+                  className={`absolute -top-1 -right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border border-slate-900 ${
+                    dbStatus?.connected
+                      ? 'bg-emerald-400 animate-pulse'
+                      : dbStatus?.configured
+                      ? 'bg-amber-400'
+                      : 'bg-indigo-400'
+                  }`}
+                />
+              </div>
+              <span className="hidden lg:inline text-[11px] font-semibold">
+                {dbStatus?.connected
+                  ? dbStatus.isTiDB
+                    ? 'TiDB Online'
+                    : 'MySQL Online'
+                  : 'DB MySQL'}
+              </span>
+            </button>
+          )}
+
           {/* Google Drive Status & Backup trigger - Khusus Admin */}
           {currentUser.role === 'Admin' && onOpenGoogleDrive && (
             <button
               id="btn-open-google-drive"
+              type="button"
               onClick={onOpenGoogleDrive}
-              className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg border transition-all flex items-center justify-center text-xs font-medium cursor-pointer shrink-0 active:scale-95 ${
+              className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 ${
                 isGoogleConnected
                   ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 hover:bg-sky-500/30'
                   : 'bg-slate-800/90 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700'
               }`}
-              title="Google Drive Cloud & Cadangan"
+              title={
+                isGoogleConnected
+                  ? 'Google Drive: Terhubung Aktif. Klik untuk kelola cadangan & file arsip.'
+                  : 'Google Drive: Belum Terhubung. Klik untuk mengaktifkan integrasi Google Drive.'
+              }
               aria-label="Google Drive"
             >
-              <Cloud className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <div className="relative flex items-center justify-center">
+                <Cloud
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                    isGoogleConnected ? 'text-sky-400' : 'text-slate-400'
+                  }`}
+                />
+                <span
+                  className={`absolute -top-1 -right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border border-slate-900 ${
+                    isGoogleConnected ? 'bg-emerald-400' : 'bg-slate-500'
+                  }`}
+                />
+              </div>
+              <span className="hidden lg:inline text-[11px] font-semibold">
+                {isGoogleConnected ? 'Drive Aktif' : 'G-Drive'}
+              </span>
             </button>
           )}
 
