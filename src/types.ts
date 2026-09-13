@@ -99,7 +99,8 @@ export interface Presensi {
   keterangan?: string;
   notifikasi_wa_terkirim?: boolean;
   is_offline_pending?: boolean;
-  synced_to_firebase?: boolean;
+  synced_to_db?: boolean;
+  synced_to_firebase?: boolean; // deprecated, alias for synced_to_db
   synced_at?: string;
 
   // Persetujuan Presensi oleh Pembimbing DUDI

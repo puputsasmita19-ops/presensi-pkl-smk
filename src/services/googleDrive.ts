@@ -1,4 +1,4 @@
-import { getCachedAccessToken } from './firebase';
+import { getCachedAccessToken } from './googleAuth';
 
 export interface DriveFileItem {
   id: string;

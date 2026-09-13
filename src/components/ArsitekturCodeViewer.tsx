@@ -317,15 +317,15 @@ export const ArsitekturCodeViewer: React.FC = () => {
       <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-4">
         <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
           <BookMarked className="w-4 h-4 text-sky-600" />
-          <span>Panduan Deploy & Setup (Google Apps Script & Firebase)</span>
+          <span>Panduan Deploy & Setup (MySQL / TiDB Cloud & Google Drive)</span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           {/* Step 1 */}
           <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-            <strong className="text-slate-900 block font-bold">1. Buat Database Firebase</strong>
+            <strong className="text-slate-900 block font-bold">1. Siapkan Database MySQL / TiDB Cloud</strong>
             <p className="text-slate-600 leading-relaxed text-[11px]">
-              Buka <em>console.firebase.google.com</em>, buat proyek baru, aktifkan <strong>Realtime Database</strong>, dan salin Database URL serta Database Secret dari menu <em>Project Settings &gt; Service Accounts</em>. Pasang juga Security Rules dari tab <code>database.rules.json</code>.
+              Daftar gratis di <em>tidbcloud.com</em> atau gunakan server MySQL online Anda. Masukkan host, port 4000, user, password, dan SSL=true ke variabel lingkungan (<code>.env</code>). Tabel-tabel akan terbuat otomatis.
             </p>
           </div>
 

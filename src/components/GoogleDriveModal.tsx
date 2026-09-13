@@ -8,15 +8,16 @@ import {
 import {
   getCachedAccessToken,
   setCachedAccessToken,
-  signInWithGoogle,
-  logoutFirebase,
-} from '../services/firebase';
+  requestGoogleDriveToken,
+  logoutGoogle,
+  getSavedGoogleClientId,
+  setGoogleClientId,
+} from '../services/googleAuth';
 import { Presensi, JurnalHarian, Siswa, DUDI } from '../types';
 import {
   Cloud,
   CheckCircle2,
   AlertCircle,
-  FolderPlus,
   UploadCloud,
   FileText,
   ExternalLink,
@@ -24,13 +25,11 @@ import {
   X,
   Lock,
   HardDrive,
-  Copy,
-  Check,
   KeyRound,
   Download,
-  ShieldAlert,
   ChevronDown,
   ChevronUp,
+  Settings,
 } from 'lucide-react';
 
 interface GoogleDriveModalProps {
@@ -56,25 +55,18 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [files, setFiles] = useState<DriveFileItem[]>([]);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
-  const [folderId, setFolderId] = useState<string | null>(null);
-
-  // Unauthorized Domain Guidance State
-  const [isDomainError, setIsDomainError] = useState<boolean>(false);
-  const [currentHostname, setCurrentHostname] = useState<string>('');
-  const [copiedDomain, setCopiedDomain] = useState<boolean>(false);
 
   // Manual OAuth Token Input State
   const [showManualToken, setShowManualToken] = useState<boolean>(false);
   const [manualTokenInput, setManualTokenInput] = useState<string>('');
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setCurrentHostname(window.location.hostname);
-    }
-  }, []);
+  // Google Client ID State
+  const [clientIdInput, setClientIdInput] = useState<string>('');
+  const [showClientIdConfig, setShowClientIdConfig] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen) {
+      setClientIdInput(getSavedGoogleClientId());
       checkDriveStatus();
     }
   }, [isOpen]);
@@ -123,39 +115,23 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   const handleConnectGoogle = async () => {
     setIsLoading(true);
     setStatusMsg(null);
-    setIsDomainError(false);
 
     try {
-      await signInWithGoogle();
+      const token = await requestGoogleDriveToken(clientIdInput);
       setIsConnected(true);
       if (onConnectionChange) onConnectionChange(true);
       setStatusMsg({
         type: 'success',
-        text: 'Alhamdulillah, akun Google Drive berhasil terhubung!',
+        text: 'Akun Google Drive berhasil terhubung!',
       });
       await fetchFiles();
     } catch (err: any) {
       const errMsg = err?.message || String(err);
-      const isUnauthorized =
-        err?.code === 'auth/unauthorized-domain' ||
-        errMsg.includes('auth/unauthorized-domain') ||
-        errMsg.includes('unauthorized domain');
-
-      if (isUnauthorized) {
-        setIsDomainError(true);
-        setStatusMsg({
-          type: 'error',
-          text: `Domain web "${currentHostname}" belum diizinkan di Firebase Console. Ikuti panduan di bawah untuk mengizinkannya atau gunakan opsi token manual.`,
-        });
-      } else if (err?.code === 'auth/popup-blocked') {
+      if (errMsg.includes('Google Client ID belum diatur')) {
+        setShowClientIdConfig(true);
         setStatusMsg({
           type: 'warning',
-          text: 'Jendela pop-up Google Sign-In diblokir browser. Izinkan pop-up untuk situs ini lalu coba lagi.',
-        });
-      } else if (err?.code === 'auth/cancelled-popup-request' || err?.code === 'auth/popup-closed-by-user') {
-        setStatusMsg({
-          type: 'warning',
-          text: 'Proses login Google dibatalkan sebelum selesai.',
+          text: 'Google Client ID belum diisi. Masukkan Google Client ID di pengaturan bawah, atau gunakan opsi token manual.',
         });
       } else {
         setStatusMsg({
@@ -166,6 +142,15 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSaveClientId = () => {
+    const trimmed = clientIdInput.trim();
+    setGoogleClientId(trimmed);
+    setStatusMsg({
+      type: 'success',
+      text: 'Google Client ID berhasil disimpan. Silakan klik Hubungkan Google Drive.',
+    });
   };
 
   const handleApplyManualToken = async () => {
@@ -180,14 +165,14 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     if (onConnectionChange) onConnectionChange(true);
     setStatusMsg({
       type: 'success',
-      text: 'Akses token manual berhasil diterapkan. Memeriksa akses ke Google Drive...',
+      text: 'Akses token Google Drive berhasil diterapkan. Memeriksa akses...',
     });
     setManualTokenInput('');
     await fetchFiles();
   };
 
-  const handleDisconnect = async () => {
-    await logoutFirebase();
+  const handleDisconnect = () => {
+    logoutGoogle();
     setIsConnected(false);
     if (onConnectionChange) onConnectionChange(false);
     setFiles([]);
@@ -217,7 +202,6 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
 
     try {
       const targetFolderId = await getOrCreatePklFolder();
-      setFolderId(targetFolderId);
 
       const backupData = {
         timestamp: new Date().toISOString(),
@@ -288,14 +272,6 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const copyDomain = () => {
-    if (currentHostname) {
-      navigator.clipboard.writeText(currentHostname);
-      setCopiedDomain(true);
-      setTimeout(() => setCopiedDomain(false), 2500);
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -309,10 +285,10 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-                Google Drive Integration
+                Google Drive Storage & Cadangan
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Penyimpanan Foto Selfie & Cadangan Dokumen Cloud PKL
+                Penyimpanan Foto Selfie Presensi & Arsip Cadangan PKL
               </p>
             </div>
           </div>
@@ -340,45 +316,10 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
             >
               {statusMsg.type === 'success' ? (
                 <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
-              ) : statusMsg.type === 'warning' ? (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
               ) : (
-                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
               )}
               <span className="leading-relaxed">{statusMsg.text}</span>
-            </div>
-          )}
-
-          {/* Special Guidance: Unauthorized Domain Fix */}
-          {isDomainError && (
-            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 text-amber-950 dark:text-amber-200 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-bold text-xs">
-                  <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Solusi Mengatasi "auth/unauthorized-domain":</span>
-                </div>
-              </div>
-              <p className="text-[11px] text-amber-900 dark:text-amber-300 leading-relaxed">
-                Google Firebase memblokir login karena domain web ini belum dimasukkan ke daftar domain yang diizinkan (*Authorized Domains*).
-              </p>
-              <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-amber-200 dark:border-amber-900 flex items-center justify-between gap-2">
-                <span className="font-mono text-xs text-slate-800 dark:text-slate-200 truncate">
-                  {currentHostname || 'Domain Anda'}
-                </span>
-                <button
-                  type="button"
-                  onClick={copyDomain}
-                  className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-semibold flex items-center gap-1 shrink-0 transition cursor-pointer"
-                >
-                  {copiedDomain ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedDomain ? 'Tersalin' : 'Salin Domain'}</span>
-                </button>
-              </div>
-              <ol className="list-decimal list-inside space-y-1 text-[11px] text-amber-900 dark:text-amber-300 pl-1">
-                <li>Buka <strong>Firebase Console</strong> &gt; pilih project Anda.</li>
-                <li>Pilih menu <strong>Build</strong> &gt; <strong>Authentication</strong> &gt; tab <strong>Settings</strong>.</li>
-                <li>Di bagian <strong>Authorized domains</strong>, klik <strong>Add domain</strong>, tempel domain di atas, lalu klik <strong>Save</strong>.</li>
-              </ol>
             </div>
           )}
 
@@ -403,8 +344,8 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                 {isConnected
-                  ? 'Siap menyimpan berkas foto selfie presensi dan arsip cadangan data PKL.'
-                  : 'Masuk dengan Akun Google untuk mengaktifkan folder penyimpanan Google Drive.'}
+                  ? 'Siap menyimpan foto selfie presensi dan arsip cadangan data PKL.'
+                  : 'Hubungkan Akun Google untuk mengaktifkan folder penyimpanan Google Drive.'}
               </p>
             </div>
 
@@ -443,43 +384,84 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
             </div>
           </div>
 
-          {/* Opsi Cadangan Alternatif: Token Manual Google */}
+          {/* Opsi Token Manual & Pengaturan Client ID */}
           {!isConnected && (
-            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowManualToken(!showManualToken)}
-                className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-left text-slate-700 dark:text-slate-300 text-[11px] font-semibold transition"
-              >
-                <div className="flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Opsi Alternatif: Gunakan Google OAuth Token Manual</span>
-                </div>
-                {showManualToken ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-              {showManualToken && (
-                <div className="p-3 bg-white dark:bg-slate-900 space-y-2 border-t border-slate-200 dark:border-slate-800">
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Jika Anda memiliki Google OAuth Access Token (misalnya dari OAuth Playground atau Google Workspace), Anda dapat menempelkannya di sini:
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="password"
-                      placeholder="Tempel OAuth Access Token (ya29...)"
-                      value={manualTokenInput}
-                      onChange={(e) => setManualTokenInput(e.target.value)}
-                      className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyManualToken}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer"
-                    >
-                      Terapkan
-                    </button>
+            <div className="space-y-2">
+              {/* Opsi Token Manual */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowManualToken(!showManualToken)}
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-left text-slate-700 dark:text-slate-300 text-[11px] font-semibold transition"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Opsi Instan: Tempel Google OAuth Access Token Manual</span>
                   </div>
-                </div>
-              )}
+                  {showManualToken ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+                {showManualToken && (
+                  <div className="p-3 bg-white dark:bg-slate-900 space-y-2 border-t border-slate-200 dark:border-slate-800">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Jika Anda memiliki Access Token OAuth Google Drive (misal dari Google OAuth Playground), Anda dapat menempelkannya di sini untuk langsung terhubung:
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        placeholder="Tempel Access Token (ya29...)"
+                        value={manualTokenInput}
+                        onChange={(e) => setManualTokenInput(e.target.value)}
+                        className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyManualToken}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer"
+                      >
+                        Terapkan
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Opsi Konfigurasi Google Client ID */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowClientIdConfig(!showClientIdConfig)}
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-left text-slate-700 dark:text-slate-300 text-[11px] font-semibold transition"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Settings className="w-3.5 h-3.5 text-sky-500" />
+                    <span>Pengaturan Google OAuth Client ID</span>
+                  </div>
+                  {showClientIdConfig ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+                {showClientIdConfig && (
+                  <div className="p-3 bg-white dark:bg-slate-900 space-y-2 border-t border-slate-200 dark:border-slate-800">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Masukkan Client ID dari Google Cloud Console (Credentials &gt; OAuth 2.0 Client IDs):
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="contoh: 123456789-abc.apps.googleusercontent.com"
+                        value={clientIdInput}
+                        onChange={(e) => setClientIdInput(e.target.value)}
+                        className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveClientId}
+                        className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer"
+                      >
+                        Simpan ID
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

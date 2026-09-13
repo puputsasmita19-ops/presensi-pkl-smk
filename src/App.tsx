@@ -50,12 +50,12 @@ import { WhatsAppFonnteModal } from './components/WhatsAppFonnteModal';
 import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
 import { DatabaseModal } from './components/DatabaseModal';
 import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
-import { logoutFirebase, initAuth, getCachedAccessToken } from './services/firebase';
+import { getCachedAccessToken, logoutGoogle } from './services/googleAuth';
 import {
   getOfflineQueue,
   saveToOfflineQueue,
-  savePresensiToFirestore,
-  syncOfflinePresensiToFirebase,
+  savePresensiToDatabase,
+  syncOfflinePresensiToDatabase,
 } from './services/offlinePresensiService';
 import { getInitialTheme, applyTheme } from './utils/theme';
 import {
@@ -242,21 +242,9 @@ export default function App() {
     setLogs((prev) => [newLogEntry, ...prev]);
   };
 
-  // Initialize Firebase Auth listener on mount
+  // Inisialisasi status koneksi Google Drive saat aplikasi dimuat
   useEffect(() => {
-    const unsubscribe = initAuth(
-      (firebaseUser, token) => {
-        if (token) {
-          setIsGoogleConnected(true);
-        }
-      },
-      () => {
-        setIsGoogleConnected(false);
-      }
-    );
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
+    setIsGoogleConnected(!!getCachedAccessToken());
   }, []);
 
   // Initialize offline queue from localStorage on mount
@@ -317,13 +305,14 @@ export default function App() {
 
     setIsSyncing(true);
     try {
-      const result = await syncOfflinePresensiToFirebase((synced) => {
+      const result = await syncOfflinePresensiToDatabase((synced) => {
         setPresensiList((prev) =>
           prev.map((p) =>
             p.id_presensi === synced.id_presensi
               ? {
                   ...p,
                   is_offline_pending: false,
+                  synced_to_db: true,
                   synced_to_firebase: true,
                   synced_at: synced.synced_at,
                 }
@@ -338,23 +327,23 @@ export default function App() {
       if (result.successCount > 0) {
         addLog(
           'Presensi',
-          'Sinkronisasi Firebase Berhasil',
-          `Koneksi internet pulih. Berhasil mengirim ${result.successCount} data presensi offline dari localStorage ke Firebase Firestore.`,
+          'Sinkronisasi Database Berhasil',
+          `Koneksi pulih. Berhasil mengirim ${result.successCount} data presensi offline dari perangkat ke Database MySQL / TiDB Cloud.`,
           'Sukses',
           currentUser,
-          'Firebase Cloud Sync'
+          'Database Cloud Sync'
         );
         setSyncToastMessage(
-          `Koneksi internet stabil! ${result.successCount} data presensi berhasil disinkronkan ke Firebase Firestore.`
+          `Koneksi stabil! ${result.successCount} data presensi berhasil disinkronkan ke Database MySQL/TiDB.`
         );
         setTimeout(() => setSyncToastMessage(null), 6000);
       }
     } catch (err: any) {
-      console.error('Error saat menyinkronkan data offline ke Firebase:', err);
+      console.error('Error saat menyinkronkan data offline ke database:', err);
       addLog(
         'Presensi',
-        'Sinkronisasi Firebase Tertunda',
-        `Gagal menyinkronkan: ${err?.message || 'Koneksi terganggu'}. Data tetap aman tersimpan di localStorage.`,
+        'Sinkronisasi Database Tertunda',
+        `Gagal menyinkronkan: ${err?.message || 'Koneksi terganggu'}. Data tetap aman tersimpan di perangkat lokal.`,
         'Peringatan',
         currentUser,
         'Firebase Sync Error'
@@ -449,7 +438,7 @@ export default function App() {
       currentUser
     );
     clearUserSession();
-    await logoutFirebase();
+    logoutGoogle();
     setIsAuthenticated(false);
     setIsGoogleConnected(false);
   };
@@ -486,15 +475,16 @@ export default function App() {
     }
   };
 
-  // Presensi Handler: Supports offline saving to localStorage and automatic Firebase sync
+  // Presensi Handler: Menyimpan ke Database MySQL / TiDB Cloud dan antrean offline jika koneksi putus
   const handleSavePresensi = async (presensi: Presensi, sendWA: boolean) => {
     const isDeviceOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
     if (!isDeviceOnline) {
-      // 1. OFFLINE MODE: Save to localStorage queue
+      // 1. OFFLINE MODE: Simpan ke antrean localStorage
       const offlinePresensi: Presensi = {
         ...presensi,
         is_offline_pending: true,
+        synced_to_db: false,
         synced_to_firebase: false,
       };
 
@@ -514,26 +504,27 @@ export default function App() {
       addLog(
         'Presensi',
         offlinePresensi.jam_pulang ? 'Presensi Pulang (Offline)' : 'Presensi Masuk (Offline)',
-        `[Mode Offline] Presensi ${offlinePresensi.status} disimpan sementara ke localStorage. Akan otomatis dikirim ke Firebase Firestore saat koneksi internet kembali online.`,
+        `[Mode Offline] Presensi ${offlinePresensi.status} disimpan sementara di perangkat lokal. Akan otomatis dikirim ke Database MySQL/TiDB saat koneksi pulih.`,
         'Peringatan',
         currentUser,
         'LocalStorage Offline Cache'
       );
 
       setSyncToastMessage(
-        'Mode Offline: Presensi berhasil disimpan di perangkat (localStorage). Akan otomatis dikirim ke Firebase saat online.'
+        'Mode Offline: Presensi berhasil disimpan di perangkat. Akan otomatis disinkronkan ke Database MySQL saat online.'
       );
       setTimeout(() => setSyncToastMessage(null), 7000);
       return;
     }
 
-    // 2. ONLINE MODE: Attempt saving to Firebase Firestore
+    // 2. ONLINE MODE: Simpan langsung ke Database MySQL / TiDB
     try {
-      await savePresensiToFirestore(presensi);
+      await savePresensiToDatabase(presensi);
 
       const onlinePresensi: Presensi = {
         ...presensi,
         is_offline_pending: false,
+        synced_to_db: true,
         synced_to_firebase: true,
         synced_at: new Date().toISOString(),
       };
@@ -550,17 +541,18 @@ export default function App() {
 
       addLog(
         'Presensi',
-        presensi.jam_pulang ? 'Presensi Pulang (Firebase)' : 'Presensi Masuk (Firebase)',
-        `Presensi ${presensi.status} tercatat dan tersinkronkan ke Firebase Firestore (Jarak GPS: ${presensi.koordinat_absen.jarak_meter}m).`,
+        presensi.jam_pulang ? 'Presensi Pulang' : 'Presensi Masuk',
+        `Presensi ${presensi.status} tersimpan di Database MySQL / TiDB (Jarak GPS: ${presensi.koordinat_absen.jarak_meter}m).`,
         presensi.koordinat_absen.dalam_radius ? 'Sukses' : 'Peringatan',
         currentUser,
-        'Firebase Firestore Realtime'
+        'MySQL/TiDB Online'
       );
-    } catch (firebaseErr: any) {
-      console.warn('Gagal menyimpan langsung ke Firebase, beralih ke localStorage:', firebaseErr);
+    } catch (dbErr: any) {
+      console.warn('Gagal menyimpan langsung ke Database, beralih ke antrean offline lokal:', dbErr);
       const fallbackPresensi: Presensi = {
         ...presensi,
         is_offline_pending: true,
+        synced_to_db: false,
         synced_to_firebase: false,
       };
       const updatedQueue = saveToOfflineQueue(fallbackPresensi);
@@ -578,16 +570,13 @@ export default function App() {
 
       addLog(
         'Presensi',
-        'Fallback ke LocalStorage',
-        `Koneksi Firebase gagal sementara (${firebaseErr?.message || 'Network error'}). Data aman tersimpan di localStorage.`,
+        'Disimpan di Perangkat (Offline)',
+        `Koneksi ke database belum terhubung (${dbErr?.message || 'Offline'}). Data aman tersimpan di perangkat lokal.`,
         'Peringatan',
         currentUser,
         'LocalStorage Fallback'
       );
     }
-
-    // Simpan juga ke Database MySQL Online jika aktif
-    savePresensiToDb(presensi).catch(console.error);
 
     // Handle WhatsApp Dispatch via Fonnte (if online)
     if (sendWA && (fonnteConfig.autoNotifyParentOnAbsence || fonnteConfig.autoNotifyOnCheckIn)) {
