@@ -1,0 +1,1057 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  INITIAL_USERS,
+  INITIAL_DUDI,
+  INITIAL_GURU,
+  INITIAL_SISWA,
+  INITIAL_PRESENSI,
+  INITIAL_JURNAL,
+  INITIAL_FONNTE_CONFIG,
+  INITIAL_LOGS,
+  INITIAL_KUNJUNGAN_GURU,
+} from './data/initialData';
+import {
+  User,
+  Role,
+  Siswa,
+  DUDI,
+  GuruPembimbing,
+  Presensi,
+  JurnalHarian,
+  StatusValidasiJurnal,
+  StatusPersetujuanDudi,
+  KunjunganGuru,
+  FonnteConfig,
+  LogAktivitas,
+  KategoriAktivitas,
+  StatusAktivitas,
+} from './types';
+import { Navbar } from './components/Navbar';
+import { LoginPage } from './components/LoginPage';
+import { GoogleDriveModal } from './components/GoogleDriveModal';
+import { PresensiCerdas } from './components/PresensiCerdas';
+import { PresensiKunjunganGuru } from './components/PresensiKunjunganGuru';
+import { PersetujuanPresensiDUDI } from './components/PersetujuanPresensiDUDI';
+import { JurnalKegiatan } from './components/JurnalKegiatan';
+import { MasterDataAdmin } from './components/MasterDataAdmin';
+import { StatistikDataAdmin } from './components/StatistikDataAdmin';
+import { StatistikKehadiranSiswa } from './components/StatistikKehadiranSiswa';
+import { LaporanPresensi } from './components/LaporanPresensi';
+import { LogAktivitasViewer } from './components/LogAktivitasViewer';
+import { InfoPKLSiswa } from './components/InfoPKLSiswa';
+import { ProfilIndustriDUDI } from './components/ProfilIndustriDUDI';
+import { ArsitekturCodeViewer } from './components/ArsitekturCodeViewer';
+import { WhatsAppFonnteModal } from './components/WhatsAppFonnteModal';
+import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
+import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
+import { logoutFirebase, initAuth, getCachedAccessToken } from './services/firebase';
+import {
+  getOfflineQueue,
+  saveToOfflineQueue,
+  savePresensiToFirestore,
+  syncOfflinePresensiToFirebase,
+} from './services/offlinePresensiService';
+import { getInitialTheme, applyTheme } from './utils/theme';
+import {
+  fetchSiswaFromDb,
+  saveSiswaToDb,
+  deleteSiswaFromDb,
+  fetchDudiFromDb,
+  saveDudiToDb,
+  fetchPresensiFromDb,
+  savePresensiToDb,
+  fetchJurnalFromDb,
+  saveJurnalToDb,
+} from './utils/apiService';
+
+import {
+  getStoredSession,
+  saveUserSession,
+  clearUserSession,
+  getStoredActiveTab,
+  saveActiveTab,
+  ROLE_ALLOWED_TABS,
+} from './utils/sessionManager';
+
+export default function App() {
+  // Ambil sesi autentikasi awal yang persisten dari multi-tier storage (localStorage, sessionStorage, cookie)
+  const initialSession = useMemo(() => getStoredSession(), []);
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
+    () => initialSession.isAuthenticated
+  );
+
+  const [currentUser, setCurrentUser] = useState<User>(() => {
+    if (initialSession.user) {
+      return initialSession.user;
+    }
+    return INITIAL_USERS[0]; // Budi Santoso (Admin)
+  });
+
+  const [isGoogleConnected, setIsGoogleConnected] = useState<boolean>(false);
+
+  // Dark Mode / Theme State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(getInitialTheme);
+
+  useEffect(() => {
+    applyTheme(isDarkMode);
+  }, [isDarkMode]);
+
+  const handleToggleDarkMode = () => {
+    setIsDarkMode((prev) => !prev);
+  };
+
+  // Internet Connectivity & Offline Sync State
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [pendingOfflineQueue, setPendingOfflineQueue] = useState<Presensi[]>([]);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncToastMessage, setSyncToastMessage] = useState<string | null>(null);
+
+  // Global States with realistic initial datasets
+  const [siswaList, setSiswaList] = useState<Siswa[]>(INITIAL_SISWA);
+  const [dudiList, setDudiList] = useState<DUDI[]>(INITIAL_DUDI);
+  const [guruList, setGuruList] = useState<GuruPembimbing[]>(INITIAL_GURU);
+  const [presensiList, setPresensiList] = useState<Presensi[]>(INITIAL_PRESENSI);
+  const [jurnalList, setJurnalList] = useState<JurnalHarian[]>(INITIAL_JURNAL);
+  const [kunjunganGuruList, setKunjunganGuruList] = useState<KunjunganGuru[]>(() => {
+    const saved = localStorage.getItem('kunjungan_guru_list');
+    return saved ? JSON.parse(saved) : INITIAL_KUNJUNGAN_GURU;
+  });
+  const [fonnteConfig, setFonnteConfig] = useState<FonnteConfig>(INITIAL_FONNTE_CONFIG);
+  const [logs, setLogs] = useState<LogAktivitas[]>(INITIAL_LOGS);
+
+  useEffect(() => {
+    localStorage.setItem('kunjungan_guru_list', JSON.stringify(kunjunganGuruList));
+  }, [kunjunganGuruList]);
+
+  // Tab Navigasi Aktif dengan dual-persistence (URL Hash + Storage tiers)
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const role: Role = initialSession.user ? initialSession.user.role : 'Admin';
+    return getStoredActiveTab(role);
+  });
+
+  // Sinkronkan activeTab ke storage dan URL Hash setiap kali berpindah tab
+  useEffect(() => {
+    saveActiveTab(activeTab);
+  }, [activeTab]);
+
+  // Pantau perubahan hash URL (misal tombol Back / Forward di browser)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const rawHash = window.location.hash.replace('#', '').trim();
+      const mainHash = rawHash.split('/')[0].split('?')[0];
+      const allowed = ROLE_ALLOWED_TABS[currentUser.role] || ['presensi'];
+      if (mainHash && allowed.includes(mainHash) && mainHash !== activeTab) {
+        setActiveTab(mainHash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentUser.role, activeTab]);
+
+  // Simpan sesi autentikasi dan data user ke multi-tier storage jika user aktif
+  useEffect(() => {
+    if (isAuthenticated && currentUser) {
+      saveUserSession(currentUser);
+    }
+  }, [isAuthenticated, currentUser]);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState<boolean>(false);
+  const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState<boolean>(false);
+  const [selectedSiswaDetail, setSelectedSiswaDetail] = useState<Siswa | null>(null);
+  const [isProfilDetailModalOpen, setIsProfilDetailModalOpen] = useState<boolean>(false);
+
+  const handleOpenSiswaDetail = (siswa: Siswa) => {
+    setSelectedSiswaDetail(siswa);
+    setIsProfilDetailModalOpen(true);
+    addLog(
+      'Sistem',
+      'Lihat Detail Siswa',
+      `Membuka profil detail dan riwayat presensi individual siswa: ${siswa.nama_lengkap} (${siswa.nis}).`,
+      'Sukses',
+      currentUser
+    );
+  };
+
+  const handleCloseSiswaDetail = () => {
+    setIsProfilDetailModalOpen(false);
+  };
+
+  // Log Helper
+  const addLog = (
+    kategori: KategoriAktivitas,
+    aksi: string,
+    deskripsi: string,
+    status: StatusAktivitas = 'Sukses',
+    user?: User,
+    ip_device?: string
+  ) => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const formattedWaktu = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(
+      now.getHours()
+    )}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    const actor = user || currentUser;
+    const newLogEntry: LogAktivitas = {
+      id_log: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      waktu: formattedWaktu,
+      kategori,
+      aksi,
+      deskripsi,
+      pengguna: actor ? actor.nama_lengkap : 'Sistem PKL',
+      role: actor ? actor.role : 'Admin',
+      status,
+      ip_device: ip_device || 'Web Browser Client',
+    };
+
+    setLogs((prev) => [newLogEntry, ...prev]);
+  };
+
+  // Initialize Firebase Auth listener on mount
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (firebaseUser, token) => {
+        if (token) {
+          setIsGoogleConnected(true);
+        }
+      },
+      () => {
+        setIsGoogleConnected(false);
+      }
+    );
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // Initialize offline queue from localStorage on mount
+  useEffect(() => {
+    setPendingOfflineQueue(getOfflineQueue());
+  }, []);
+
+  // Memuat data terbaru dari Backend MySQL jika database online terhubung
+  useEffect(() => {
+    let isMounted = true;
+    const loadFromDatabase = async () => {
+      try {
+        const [dbSiswa, dbDudi, dbPresensi, dbJurnal] = await Promise.all([
+          fetchSiswaFromDb(),
+          fetchDudiFromDb(),
+          fetchPresensiFromDb(),
+          fetchJurnalFromDb(),
+        ]);
+
+        if (!isMounted) return;
+
+        if (dbSiswa && dbSiswa.length > 0) {
+          setSiswaList(dbSiswa);
+        }
+        if (dbDudi && dbDudi.length > 0) {
+          setDudiList(dbDudi);
+        }
+        if (dbPresensi && dbPresensi.length > 0) {
+          setPresensiList(dbPresensi);
+        }
+        if (dbJurnal && dbJurnal.length > 0) {
+          setJurnalList(dbJurnal);
+        }
+      } catch (err) {
+        console.info('Penyimpanan lokal aktif (MySQL online standby).');
+      }
+    };
+
+    loadFromDatabase();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Function to sync offline presensi queue to Firebase Firestore
+  const triggerSyncToFirebase = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSyncToastMessage('Tidak dapat menyinkronkan: Perangkat sedang dalam mode offline.');
+      setTimeout(() => setSyncToastMessage(null), 4000);
+      return;
+    }
+
+    const queue = getOfflineQueue();
+    if (queue.length === 0) {
+      setPendingOfflineQueue([]);
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const result = await syncOfflinePresensiToFirebase((synced) => {
+        setPresensiList((prev) =>
+          prev.map((p) =>
+            p.id_presensi === synced.id_presensi
+              ? {
+                  ...p,
+                  is_offline_pending: false,
+                  synced_to_firebase: true,
+                  synced_at: synced.synced_at,
+                }
+              : p
+          )
+        );
+      });
+
+      const remaining = getOfflineQueue();
+      setPendingOfflineQueue(remaining);
+
+      if (result.successCount > 0) {
+        addLog(
+          'Presensi',
+          'Sinkronisasi Firebase Berhasil',
+          `Koneksi internet pulih. Berhasil mengirim ${result.successCount} data presensi offline dari localStorage ke Firebase Firestore.`,
+          'Sukses',
+          currentUser,
+          'Firebase Cloud Sync'
+        );
+        setSyncToastMessage(
+          `Koneksi internet stabil! ${result.successCount} data presensi berhasil disinkronkan ke Firebase Firestore.`
+        );
+        setTimeout(() => setSyncToastMessage(null), 6000);
+      }
+    } catch (err: any) {
+      console.error('Error saat menyinkronkan data offline ke Firebase:', err);
+      addLog(
+        'Presensi',
+        'Sinkronisasi Firebase Tertunda',
+        `Gagal menyinkronkan: ${err?.message || 'Koneksi terganggu'}. Data tetap aman tersimpan di localStorage.`,
+        'Peringatan',
+        currentUser,
+        'Firebase Sync Error'
+      );
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Listen to network connectivity changes (online & offline)
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      addLog(
+        'Autentikasi',
+        'Koneksi Internet Pulih (Online)',
+        'Perangkat kembali terhubung ke internet. Memulai sinkronisasi otomatis data presensi ke Firebase Firestore...',
+        'Sukses',
+        currentUser,
+        'Network Online Event'
+      );
+      triggerSyncToFirebase();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      addLog(
+        'Autentikasi',
+        'Koneksi Internet Terputus (Offline)',
+        'Perangkat beralih ke Mode Offline. Presensi baru akan otomatis disimpan sementara ke localStorage.',
+        'Peringatan',
+        currentUser,
+        'Network Offline Event'
+      );
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // If online on initial load and there are pending items, sync them
+    if (typeof navigator !== 'undefined' && navigator.onLine && getOfflineQueue().length > 0) {
+      triggerSyncToFirebase();
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [currentUser]);
+
+  // Login handler
+  const handleLoginSuccess = (user: User, googleConnected = false) => {
+    // Simpan sesi autentikasi secara sinkron ke seluruh storage tier (localStorage, sessionStorage, cookie)
+    saveUserSession(user);
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    
+    // Tentukan tab aktif (gunakan tab tersimpan/hash yang valid untuk role ini)
+    const targetTab = getStoredActiveTab(user.role);
+    setActiveTab(targetTab);
+    saveActiveTab(targetTab);
+
+    setIsGoogleConnected(googleConnected || !!getCachedAccessToken());
+    addLog(
+      'Autentikasi',
+      'Login Akun Berhasil',
+      `${user.nama_lengkap} berhasil masuk ke sistem sebagai ${user.role}.`,
+      'Sukses',
+      user,
+      'Autentikasi Form Sekolah'
+    );
+  };
+
+  // Strict Role-Based Access Control (RBAC): Ensure activeTab is strictly allowed for current role
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const allowed = ROLE_ALLOWED_TABS[currentUser.role] || ['presensi'];
+    if (!allowed.includes(activeTab)) {
+      const fallbackTab = allowed[0] || 'presensi';
+      setActiveTab(fallbackTab);
+      saveActiveTab(fallbackTab);
+    }
+  }, [isAuthenticated, currentUser.role, activeTab]);
+
+  // Logout handler
+  const handleLogout = async () => {
+    addLog(
+      'Autentikasi',
+      'Keluar Akun (Logout)',
+      `${currentUser.nama_lengkap} keluar dari sesi aplikasi.`,
+      'Info',
+      currentUser
+    );
+    clearUserSession();
+    await logoutFirebase();
+    setIsAuthenticated(false);
+    setIsGoogleConnected(false);
+  };
+
+  // Switch role helper
+  const handleRoleChange = (newRole: Role) => {
+    let targetUser: User | undefined;
+    if (newRole === 'Admin') {
+      targetUser = INITIAL_USERS.find((u) => u.role === 'Admin');
+    } else if (newRole === 'Guru Pembimbing') {
+      targetUser = INITIAL_USERS.find((u) => u.role === 'Guru Pembimbing');
+    } else if (newRole === 'DUDI') {
+      targetUser = INITIAL_USERS.find((u) => u.role === 'DUDI');
+    } else {
+      targetUser = INITIAL_USERS.find((u) => u.role === 'Siswa');
+    }
+    if (targetUser) {
+      saveUserSession(targetUser);
+      setCurrentUser(targetUser);
+      // Ensure active tab is valid for the newly selected role
+      const allowed = ROLE_ALLOWED_TABS[newRole] || ['presensi'];
+      if (!allowed.includes(activeTab)) {
+        const fallbackTab = allowed[0] || 'presensi';
+        setActiveTab(fallbackTab);
+        saveActiveTab(fallbackTab);
+      }
+      addLog(
+        'Sistem',
+        'Ganti Peran Pengguna',
+        `Beralih ke peran ${newRole} sebagai ${targetUser.nama_lengkap}.`,
+        'Sukses',
+        targetUser
+      );
+    }
+  };
+
+  // Presensi Handler: Supports offline saving to localStorage and automatic Firebase sync
+  const handleSavePresensi = async (presensi: Presensi, sendWA: boolean) => {
+    const isDeviceOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+    if (!isDeviceOnline) {
+      // 1. OFFLINE MODE: Save to localStorage queue
+      const offlinePresensi: Presensi = {
+        ...presensi,
+        is_offline_pending: true,
+        synced_to_firebase: false,
+      };
+
+      const updatedQueue = saveToOfflineQueue(offlinePresensi);
+      setPendingOfflineQueue(updatedQueue);
+
+      setPresensiList((prev) => {
+        const existingIdx = prev.findIndex((p) => p.id_presensi === offlinePresensi.id_presensi);
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = offlinePresensi;
+          return next;
+        }
+        return [offlinePresensi, ...prev];
+      });
+
+      addLog(
+        'Presensi',
+        offlinePresensi.jam_pulang ? 'Presensi Pulang (Offline)' : 'Presensi Masuk (Offline)',
+        `[Mode Offline] Presensi ${offlinePresensi.status} disimpan sementara ke localStorage. Akan otomatis dikirim ke Firebase Firestore saat koneksi internet kembali online.`,
+        'Peringatan',
+        currentUser,
+        'LocalStorage Offline Cache'
+      );
+
+      setSyncToastMessage(
+        'Mode Offline: Presensi berhasil disimpan di perangkat (localStorage). Akan otomatis dikirim ke Firebase saat online.'
+      );
+      setTimeout(() => setSyncToastMessage(null), 7000);
+      return;
+    }
+
+    // 2. ONLINE MODE: Attempt saving to Firebase Firestore
+    try {
+      await savePresensiToFirestore(presensi);
+
+      const onlinePresensi: Presensi = {
+        ...presensi,
+        is_offline_pending: false,
+        synced_to_firebase: true,
+        synced_at: new Date().toISOString(),
+      };
+
+      setPresensiList((prev) => {
+        const existingIdx = prev.findIndex((p) => p.id_presensi === onlinePresensi.id_presensi);
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = onlinePresensi;
+          return next;
+        }
+        return [onlinePresensi, ...prev];
+      });
+
+      addLog(
+        'Presensi',
+        presensi.jam_pulang ? 'Presensi Pulang (Firebase)' : 'Presensi Masuk (Firebase)',
+        `Presensi ${presensi.status} tercatat dan tersinkronkan ke Firebase Firestore (Jarak GPS: ${presensi.koordinat_absen.jarak_meter}m).`,
+        presensi.koordinat_absen.dalam_radius ? 'Sukses' : 'Peringatan',
+        currentUser,
+        'Firebase Firestore Realtime'
+      );
+    } catch (firebaseErr: any) {
+      console.warn('Gagal menyimpan langsung ke Firebase, beralih ke localStorage:', firebaseErr);
+      const fallbackPresensi: Presensi = {
+        ...presensi,
+        is_offline_pending: true,
+        synced_to_firebase: false,
+      };
+      const updatedQueue = saveToOfflineQueue(fallbackPresensi);
+      setPendingOfflineQueue(updatedQueue);
+
+      setPresensiList((prev) => {
+        const existingIdx = prev.findIndex((p) => p.id_presensi === fallbackPresensi.id_presensi);
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = fallbackPresensi;
+          return next;
+        }
+        return [fallbackPresensi, ...prev];
+      });
+
+      addLog(
+        'Presensi',
+        'Fallback ke LocalStorage',
+        `Koneksi Firebase gagal sementara (${firebaseErr?.message || 'Network error'}). Data aman tersimpan di localStorage.`,
+        'Peringatan',
+        currentUser,
+        'LocalStorage Fallback'
+      );
+    }
+
+    // Simpan juga ke Database MySQL Online jika aktif
+    savePresensiToDb(presensi).catch(console.error);
+
+    // Handle WhatsApp Dispatch via Fonnte (if online)
+    if (sendWA && (fonnteConfig.autoNotifyParentOnAbsence || fonnteConfig.autoNotifyOnCheckIn)) {
+      const siswa = siswaList.find((s) => s.id_siswa === presensi.id_siswa);
+      const dudi = siswa ? dudiList.find((d) => d.id_dudi === siswa.id_dudi) : null;
+      if (siswa && dudi) {
+        try {
+          const message = formatWhatsAppMessage(presensi, siswa, dudi);
+          const targetPhone =
+            presensi.status !== 'Hadir' ? siswa.nomor_wa_ortu : siswa.nomor_wa;
+          await sendFonnteNotification(targetPhone, message, fonnteConfig.apiKey);
+          addLog(
+            'WhatsApp',
+            'Notifikasi WhatsApp Dispatched',
+            `Notifikasi presensi berhasil dikirim ke nomor ${targetPhone} via Fonnte Gateway.`,
+            'Sukses',
+            currentUser,
+            'Fonnte WA Gateway'
+          );
+        } catch (waErr) {
+          console.warn('Gagal kirim WA:', waErr);
+        }
+      }
+    }
+  };
+
+  // Jurnal Handlers
+  const handleSaveJurnal = (jurnal: JurnalHarian) => {
+    setJurnalList((prev) => [jurnal, ...prev]);
+
+    // Simpan ke database MySQL Online jika aktif
+    saveJurnalToDb(jurnal).catch(console.error);
+
+    addLog(
+      'Jurnal',
+      'Pengisian Jurnal PKL',
+      `Siswa mengisi jurnal kegiatan baru untuk tanggal ${jurnal.tanggal}.`,
+      'Sukses',
+      currentUser
+    );
+  };
+
+  const handleUpdateStatusJurnal = (
+    idJurnal: string,
+    reviewerRole: 'Guru Pembimbing' | 'DUDI',
+    status: StatusValidasiJurnal,
+    catatan: string
+  ) => {
+    const timeNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    setJurnalList((prev) =>
+      prev.map((j) => {
+        if (j.id_jurnal !== idJurnal) return j;
+        if (reviewerRole === 'DUDI') {
+          return {
+            ...j,
+            status_validasi_dudi: status,
+            catatan_dudi: catatan,
+            validated_dudi_at: timeNow,
+            nama_dudi_penilai: currentUser.nama_lengkap,
+          };
+        } else {
+          return {
+            ...j,
+            status_validasi_guru: status,
+            catatan_guru: catatan,
+            validated_at: timeNow,
+            nama_guru_penilai: currentUser.nama_lengkap,
+          };
+        }
+      })
+    );
+    addLog(
+      'Jurnal',
+      `Validasi Jurnal oleh ${reviewerRole}`,
+      `Jurnal ID ${idJurnal} divalidasi dengan status "${status}" oleh ${currentUser.nama_lengkap}. Catatan: "${catatan || '-'}"`,
+      'Sukses',
+      currentUser
+    );
+  };
+
+  // Kunjungan Guru Handler
+  const handleSaveKunjunganGuru = (kunjungan: KunjunganGuru) => {
+    setKunjunganGuruList((prev) => [kunjungan, ...prev]);
+    addLog(
+      'Presensi',
+      'Presensi Kunjungan Guru DUDI',
+      `Guru ${kunjungan.nama_guru} mencatat presensi kunjungan supervisi ke ${kunjungan.nama_dudi} (${kunjungan.jam_kunjungan} WIB).`,
+      'Sukses',
+      currentUser
+    );
+  };
+
+  // Persetujuan Presensi Siswa oleh DUDI
+  const handleApprovePresensiDudi = (
+    idPresensi: string,
+    status: StatusPersetujuanDudi,
+    catatanDudi: string
+  ) => {
+    const timeNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    setPresensiList((prev) =>
+      prev.map((p) =>
+        p.id_presensi === idPresensi
+          ? {
+              ...p,
+              status_persetujuan_dudi: status,
+              catatan_dudi: catatanDudi,
+              disetujui_dudi_pada: timeNow,
+              nama_pembimbing_dudi: currentUser.nama_lengkap,
+            }
+          : p
+      )
+    );
+    addLog(
+      'Presensi',
+      'Persetujuan Presensi Siswa DUDI',
+      `Pembimbing DUDI ${currentUser.nama_lengkap} menetapkan status ${status} untuk presensi ${idPresensi}. Catatan: "${catatanDudi || '-'}"`,
+      'Sukses',
+      currentUser
+    );
+  };
+
+  // Master Data Handlers
+  const handleSaveSiswa = (siswa: Siswa) => {
+    setSiswaList((prev) => {
+      const idx = prev.findIndex((s) => s.id_siswa === siswa.id_siswa);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = siswa;
+        return next;
+      }
+      return [...prev, siswa];
+    });
+
+    // Simpan ke database MySQL backend online jika server aktif
+    saveSiswaToDb(siswa).then((success) => {
+      if (success) {
+        addLog(
+          'Master Data',
+          'Sinkronisasi Siswa ke MySQL',
+          `Data siswa ${siswa.nama_lengkap} (NIS: ${siswa.nis}) berhasil disimpan ke database MySQL online.`,
+          'Sukses',
+          currentUser,
+          'MySQL Database'
+        );
+      }
+    });
+  };
+
+  const handleDeleteSiswa = (id_siswa: string) => {
+    setSiswaList((prev) => prev.filter((s) => s.id_siswa !== id_siswa));
+    deleteSiswaFromDb(id_siswa).catch(console.error);
+  };
+
+  const handleSaveDUDI = (dudi: DUDI) => {
+    setDudiList((prev) => {
+      const idx = prev.findIndex((d) => d.id_dudi === dudi.id_dudi);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = dudi;
+        return next;
+      }
+      return [...prev, dudi];
+    });
+
+    // Simpan ke database MySQL backend online
+    saveDudiToDb(dudi).catch(console.error);
+  };
+
+  const handleDeleteDUDI = (id_dudi: string) => {
+    setDudiList((prev) => prev.filter((d) => d.id_dudi !== id_dudi));
+  };
+
+  const handleSaveGuru = (guru: GuruPembimbing) => {
+    setGuruList((prev) => {
+      const idx = prev.findIndex((g) => g.id_guru === guru.id_guru);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = guru;
+        return next;
+      }
+      return [...prev, guru];
+    });
+  };
+
+  const handleDeleteGuru = (id_guru: string) => {
+    setGuruList((prev) => prev.filter((g) => g.id_guru !== id_guru));
+  };
+
+  // Bulk Import Handlers
+  const handleImportSiswa = (newItems: Siswa[]) => {
+    setSiswaList((prev) => {
+      const copy = [...prev];
+      newItems.forEach((item) => {
+        const idx = copy.findIndex(
+          (s) => s.id_siswa === item.id_siswa || (s.nis && item.nis && s.nis === item.nis)
+        );
+        if (idx >= 0) {
+          copy[idx] = item;
+        } else {
+          copy.push(item);
+        }
+      });
+      return copy;
+    });
+  };
+
+  const handleImportDUDI = (newItems: DUDI[]) => {
+    setDudiList((prev) => {
+      const copy = [...prev];
+      newItems.forEach((item) => {
+        const idx = copy.findIndex(
+          (d) =>
+            d.id_dudi === item.id_dudi ||
+            d.nama_instansi.toLowerCase().trim() === item.nama_instansi.toLowerCase().trim()
+        );
+        if (idx >= 0) {
+          copy[idx] = item;
+        } else {
+          copy.push(item);
+        }
+      });
+      return copy;
+    });
+  };
+
+  const handleImportGuru = (newItems: GuruPembimbing[]) => {
+    setGuruList((prev) => {
+      const copy = [...prev];
+      newItems.forEach((item) => {
+        const idx = copy.findIndex(
+          (g) =>
+            g.id_guru === item.id_guru ||
+            (g.nip && item.nip && g.nip.trim() === item.nip.trim()) ||
+            g.nama_guru.toLowerCase().trim() === item.nama_guru.toLowerCase().trim()
+        );
+        if (idx >= 0) {
+          copy[idx] = item;
+        } else {
+          copy.push(item);
+        }
+      });
+      return copy;
+    });
+  };
+
+  // If not authenticated, render modern Login Page
+  if (!isAuthenticated) {
+    return (
+      <>
+        <LoginPage
+          onLoginSuccess={handleLoginSuccess}
+          onOpenWhatsAppHelp={() => setIsWhatsAppModalOpen(true)}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={handleToggleDarkMode}
+        />
+        <WhatsAppFonnteModal
+          isOpen={isWhatsAppModalOpen}
+          onClose={() => setIsWhatsAppModalOpen(false)}
+          config={fonnteConfig}
+          onSaveConfig={setFonnteConfig}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col antialiased transition-colors duration-200">
+      {/* App Header & Navigation */}
+      <Navbar
+        currentUser={currentUser}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
+        onOpenGoogleDrive={() => setIsGoogleDriveModalOpen(true)}
+        onLogout={handleLogout}
+        isGoogleConnected={isGoogleConnected}
+        isOnline={isOnline}
+        pendingOfflineCount={pendingOfflineQueue.length}
+        onTriggerSync={triggerSyncToFirebase}
+        isSyncing={isSyncing}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={handleToggleDarkMode}
+        onOpenProfilSiswa={() => {
+          const selfSiswa =
+            siswaList.find(
+              (s) =>
+                s.id_siswa === currentUser.id_user ||
+                s.nama_lengkap.toLowerCase() === currentUser.nama_lengkap.toLowerCase()
+            ) || siswaList[0];
+          if (selfSiswa) handleOpenSiswaDetail(selfSiswa);
+        }}
+      />
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5">
+        {activeTab === 'presensi' && (
+          currentUser.role === 'Guru Pembimbing' ? (
+            <PresensiKunjunganGuru
+              currentUser={currentUser}
+              dudiList={dudiList}
+              siswaList={siswaList}
+              presensiList={presensiList}
+              kunjunganList={kunjunganGuruList}
+              onSaveKunjungan={handleSaveKunjunganGuru}
+              onSelectSiswaDetail={handleOpenSiswaDetail}
+            />
+          ) : currentUser.role === 'DUDI' ? (
+            <PersetujuanPresensiDUDI
+              currentUser={currentUser}
+              dudiList={dudiList}
+              siswaList={siswaList}
+              presensiList={presensiList}
+              onApprovePresensi={handleApprovePresensiDudi}
+              onSelectSiswaDetail={handleOpenSiswaDetail}
+            />
+          ) : currentUser.role === 'Admin' ? (
+            <StatistikDataAdmin
+              currentUser={currentUser}
+              siswaList={siswaList}
+              dudiList={dudiList}
+              guruList={guruList}
+              presensiList={presensiList}
+              jurnalList={jurnalList}
+              kunjunganList={kunjunganGuruList}
+              onSelectSiswaDetail={handleOpenSiswaDetail}
+              onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+            />
+          ) : (
+            <PresensiCerdas
+              currentUser={currentUser}
+              siswaList={siswaList}
+              dudiList={dudiList}
+              presensiList={presensiList}
+              onSavePresensi={handleSavePresensi}
+              onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
+              isOnline={isOnline}
+              pendingOfflineCount={pendingOfflineQueue.length}
+              onTriggerSync={triggerSyncToFirebase}
+              isSyncing={isSyncing}
+              onSelectSiswaDetail={handleOpenSiswaDetail}
+            />
+          )
+        )}
+
+        {activeTab === 'statistik' && currentUser.role === 'Siswa' && (
+          <StatistikKehadiranSiswa
+            currentUser={currentUser}
+            siswaList={siswaList}
+            dudiList={dudiList}
+            guruList={guruList}
+            presensiList={presensiList}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+            onSelectSiswaDetail={handleOpenSiswaDetail}
+          />
+        )}
+
+        {activeTab === 'jurnal' && (
+          <JurnalKegiatan
+            currentUser={currentUser}
+            siswaList={siswaList}
+            jurnalList={jurnalList}
+            onSaveJurnal={handleSaveJurnal}
+            onUpdateStatusJurnal={handleUpdateStatusJurnal}
+            onSelectSiswaDetail={handleOpenSiswaDetail}
+          />
+        )}
+
+        {activeTab === 'master' && currentUser.role === 'Admin' && (
+          <MasterDataAdmin
+            currentUser={currentUser}
+            siswaList={siswaList}
+            dudiList={dudiList}
+            guruList={guruList}
+            onSaveSiswa={handleSaveSiswa}
+            onDeleteSiswa={handleDeleteSiswa}
+            onSaveDUDI={handleSaveDUDI}
+            onDeleteDUDI={handleDeleteDUDI}
+            onSaveGuru={handleSaveGuru}
+            onDeleteGuru={handleDeleteGuru}
+            onImportSiswa={handleImportSiswa}
+            onImportDUDI={handleImportDUDI}
+            onImportGuru={handleImportGuru}
+            onSelectSiswaDetail={handleOpenSiswaDetail}
+          />
+        )}
+
+        {activeTab === 'laporan' && (
+          <LaporanPresensi
+            currentUser={currentUser}
+            siswaList={siswaList}
+            dudiList={dudiList}
+            guruList={guruList}
+            presensiList={presensiList}
+            onSelectSiswaDetail={handleOpenSiswaDetail}
+          />
+        )}
+
+        {activeTab === 'info-pkl' && currentUser.role === 'Siswa' && (
+          <InfoPKLSiswa
+            currentUser={currentUser}
+            siswaList={siswaList}
+            dudiList={dudiList}
+            guruList={guruList}
+            presensiList={presensiList}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        )}
+
+        {activeTab === 'info-dudi' && currentUser.role === 'DUDI' && (
+          <ProfilIndustriDUDI
+            currentUser={currentUser}
+            dudiList={dudiList}
+            siswaList={siswaList}
+            guruList={guruList}
+            presensiList={presensiList}
+            onSelectSiswaDetail={handleOpenSiswaDetail}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        )}
+
+        {activeTab === 'log-aktivitas' && (currentUser.role === 'Admin' || currentUser.role === 'Guru Pembimbing') && (
+          <LogAktivitasViewer
+            logs={logs}
+            onClearLogs={() => setLogs([])}
+            onAddLog={(newLog) => addLog(newLog.kategori, newLog.aksi, newLog.deskripsi, newLog.status)}
+          />
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-4 px-4 text-center text-xs text-slate-500 dark:text-slate-400 transition-colors">
+        <p>
+          Sistem Presensi & Jurnal Digital &copy; 2026. Portal Resmi Kehadiran dan Aktivitas.
+        </p>
+      </footer>
+
+      {/* Google Drive Integration Modal - Khusus Admin */}
+      {currentUser.role === 'Admin' && (
+        <GoogleDriveModal
+          isOpen={isGoogleDriveModalOpen}
+          onClose={() => setIsGoogleDriveModalOpen(false)}
+          presensiList={presensiList}
+          jurnalList={jurnalList}
+          siswaList={siswaList}
+          dudiList={dudiList}
+        />
+      )}
+
+      {/* WhatsApp Modal - Khusus Admin */}
+      {currentUser.role === 'Admin' && (
+        <WhatsAppFonnteModal
+          isOpen={isWhatsAppModalOpen}
+          onClose={() => setIsWhatsAppModalOpen(false)}
+          config={fonnteConfig}
+          onSaveConfig={setFonnteConfig}
+        />
+      )}
+
+      {/* Profil Detail & Histori Presensi Siswa Modal */}
+      <ProfilDetailSiswaModal
+        isOpen={isProfilDetailModalOpen}
+        onClose={handleCloseSiswaDetail}
+        siswa={selectedSiswaDetail}
+        dudiList={dudiList}
+        guruList={guruList}
+        presensiList={presensiList}
+        onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
+      />
+
+      {/* Floating Network & Sync Toast */}
+      {syncToastMessage && (
+        <div
+          id="toast-network-sync"
+          className="fixed bottom-4 right-4 z-50 max-w-md bg-slate-900/95 text-white border border-slate-700 shadow-2xl rounded-2xl p-3.5 flex items-start gap-3 backdrop-blur-xs transition-all"
+        >
+          <div
+            className={`w-2.5 h-2.5 rounded-full mt-1 shrink-0 ${
+              isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+            }`}
+          />
+          <p className="text-xs text-slate-200 flex-1 leading-relaxed">{syncToastMessage}</p>
+          <button
+            type="button"
+            onClick={() => setSyncToastMessage(null)}
+            className="text-slate-400 hover:text-white text-xs cursor-pointer p-0.5 rounded-md hover:bg-slate-800"
+            aria-label="Tutup Notifikasi"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

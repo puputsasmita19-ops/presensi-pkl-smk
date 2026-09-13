@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile in PKL system",
+      "type": "object",
+      "properties": {
+        "id_user": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["Admin", "Guru Pembimbing", "Siswa"] },
+        "nama_lengkap": { "type": "string" },
+        "nomor_wa": { "type": "string" }
+      },
+      "required": ["id_user", "username", "role", "nama_lengkap"]
+    },
+    "Presensi": {
+      "title": "Presensi",
+      "description": "Student daily attendance log with geofence and selfie verification",
+      "type": "object",
+      "properties": {
+        "id_presensi": { "type": "string" },
+        "id_siswa": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "status": { "type": "string", "enum": ["Hadir", "Izin", "Sakit", "Alpa"] },
+        "waktu_masuk": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" }
+      },
+      "required": ["id_presensi", "id_siswa", "tanggal", "status"]
+    },
+    "JurnalHarian": {
+      "title": "JurnalHarian",
+      "description": "Student daily journal and teacher validation",
+      "type": "object",
+      "properties": {
+        "id_jurnal": { "type": "string" },
+        "id_siswa": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "kegiatan": { "type": "string" },
+        "status_validasi_guru": { "type": "string", "enum": ["Menunggu", "Disetujui", "Revisi"] }
+      },
+      "required": ["id_jurnal", "id_siswa", "tanggal", "kegiatan"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/presensi/{presensiId}": {
+      "schema": "Presensi",
+      "description": "Attendance logs collection"
+    },
+    "/jurnal/{jurnalId}": {
+      "schema": "JurnalHarian",
+      "description": "Daily journals collection"
+    }
+  }
+}

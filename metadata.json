@@ -1,0 +1,6 @@
+{
+  "name": "Presensi PKL SMK",
+  "description": "Sistem Presensi & Jurnal Praktik Kerja Lapangan (PKL) SMK berbasis Web & Google Apps Script dengan Firebase, Geolocation radius, kamera selfie, dan WhatsApp notifikasi.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
