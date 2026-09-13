@@ -43,10 +43,22 @@ export const listDriveFiles = async (folderId?: string): Promise<DriveFileItem[]
   return data.files || [];
 };
 
+let cachedPklFolderId: string | null = null;
+
+export const getCachedPklFolderId = (): string | null => cachedPklFolderId;
+
+export const resetCachedPklFolderId = () => {
+  cachedPklFolderId = null;
+};
+
 /**
  * Create or locate a folder in Google Drive named "Presensi & Jurnal PKL SMK"
  */
 export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL SMK'): Promise<string> => {
+  if (cachedPklFolderId) {
+    return cachedPklFolderId;
+  }
+
   const token = getCachedAccessToken();
   if (!token) {
     throw new Error('Token Google Drive tidak tersedia.');
@@ -64,6 +76,7 @@ export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL S
   if (searchRes.ok) {
     const searchData = await searchRes.json();
     if (searchData.files && searchData.files.length > 0) {
+      cachedPklFolderId = searchData.files[0].id;
       return searchData.files[0].id;
     }
   }
@@ -86,6 +99,7 @@ export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL S
   }
 
   const folderData = await createRes.json();
+  cachedPklFolderId = folderData.id;
   return folderData.id;
 };
 

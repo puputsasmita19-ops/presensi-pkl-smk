@@ -646,6 +646,7 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
                 <th className="p-3">Siswa & DUDI</th>
                 <th className="p-3">Shift & Jadwal</th>
                 <th className="p-3">Status & Ketepatan</th>
+                <th className="p-3">Bukti Foto & Drive</th>
                 <th className="p-3">Waktu Realisasi</th>
                 <th className="p-3">Jarak GPS</th>
                 <th className="p-3">Keterangan</th>
@@ -654,7 +655,7 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-10 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={8} className="p-10 text-center text-slate-500 dark:text-slate-400">
                     <div className="max-w-xs mx-auto space-y-2">
                       <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
                         <Search className="w-5 h-5" />
@@ -761,9 +762,39 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
                           </span>
                         ) : (
                           <span className="block w-fit px-1.5 py-0.2 rounded text-[9px] font-medium bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                            Firebase Synced
+                            MySQL / TiDB
                           </span>
                         )}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          {item.foto_selfie ? (
+                            <div className="w-9 h-9 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 shadow-xs bg-slate-100 dark:bg-slate-800">
+                              <img
+                                src={item.foto_selfie}
+                                alt="Selfie"
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Tanpa Foto</span>
+                          )}
+                          {item.drive_view_url ? (
+                            <a
+                              href={item.drive_view_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900 text-sky-700 dark:text-sky-300 text-[10px] font-semibold border border-sky-200 dark:border-sky-800 transition"
+                              title="Buka foto asli di Google Drive"
+                            >
+                              <span>Drive</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          ) : item.foto_selfie ? (
+                            <span className="text-[9px] text-slate-400">Database</span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="p-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
                         <div>Masuk: {item.jam_masuk}</div>

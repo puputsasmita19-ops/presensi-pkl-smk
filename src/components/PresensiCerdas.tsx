@@ -23,6 +23,7 @@ import {
   User as UserIcon,
   Upload,
   Zap,
+  Cloud,
 } from 'lucide-react';
 import { Siswa, DUDI, Presensi, StatusPresensi, User, ShiftKerja } from '../types';
 import { calculateDistanceMeters, formatDistance } from '../utils/geo';
@@ -39,7 +40,12 @@ import {
   compressDataUrl,
   formatKB,
   CompressionResult,
+  CompressionPreset,
+  getSavedCompressionPreset,
+  setSavedCompressionPreset,
+  getActiveCompressOptions,
 } from '../utils/imageCompressor';
+import { getCachedAccessToken } from '../services/googleAuth';
 
 interface PresensiCerdasProps {
   currentUser: User;
@@ -112,6 +118,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
     compressedKB: number;
     ratioPercent: number;
   } | null>(null);
+  const [compressPreset, setCompressPreset] = useState<CompressionPreset>(getSavedCompressionPreset());
   const [isCompressing, setIsCompressing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -456,12 +463,8 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
       // Raw uncompressed snapshot
       const rawDataUri = canvas.toDataURL('image/jpeg', 0.95);
       
-      // Automatic compression down to 720px max resolution & quality 0.78
-      const compressionResult = await compressDataUrl(rawDataUri, undefined, undefined, {
-        maxWidth: 720,
-        maxHeight: 720,
-        quality: 0.78,
-      });
+      // Automatic compression down to optimal resolution & quality based on user preset
+      const compressionResult = await compressDataUrl(rawDataUri, undefined, undefined, getActiveCompressOptions());
 
       setCapturedPhoto(compressionResult.dataUrl);
       setCompressionStats({
@@ -491,11 +494,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
         subtitle: `${assignedDUDI.nama_instansi} • ${todayDateStr} ${currentTimeHHMM} WIB • Terverifikasi`,
       };
 
-      const result = await compressImageFile(file, watermarkData, {
-        maxWidth: 720,
-        maxHeight: 720,
-        quality: 0.78,
-      });
+      const result = await compressImageFile(file, watermarkData, getActiveCompressOptions());
 
       setCapturedPhoto(result.dataUrl);
       setCompressionStats({
@@ -563,10 +562,10 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
       onSavePresensi(updated, false);
       if (!isOnline) {
         alert(
-          `[MODE OFFLINE] Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan di localStorage. Data akan otomatis dikirim ke Firebase saat koneksi internet kembali normal.`
+          `[MODE OFFLINE] Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan di penyimpanan perangkat lokal. Data akan otomatis dikirim ke Database MySQL/TiDB saat online.`
         );
       } else {
-        alert(`Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan disinkronkan ke Firebase Firestore!`);
+        alert(`Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan ke Database MySQL/TiDB Cloud!`);
       }
       return;
     }
@@ -602,14 +601,14 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
     if (!isOnline) {
       alert(
         selectedStatus === 'Hadir'
-          ? `[MODE OFFLINE] Presensi Masuk berhasil dicatat (${timeStr} WIB) dan diamankan di localStorage. Otomatis dikirim ke Firebase saat kembali online!`
-          : `[MODE OFFLINE] Laporan ${selectedStatus} tersimpan sementara di localStorage.`
+          ? `[MODE OFFLINE] Presensi Masuk berhasil dicatat (${timeStr} WIB) dan diamankan di penyimpanan lokal. Foto & data akan otomatis disinkronkan ke Google Drive & Database saat kembali online!`
+          : `[MODE OFFLINE] Laporan ${selectedStatus} tersimpan sementara di penyimpanan lokal perangkat.`
       );
     } else {
       alert(
         selectedStatus === 'Hadir'
-          ? `Presensi Masuk berhasil dicatat pada ${timeStr} WIB (${selectedShift?.nama_shift || 'Shift'} - ${punctualityCheck.deskripsi}) dan tersimpan di Firebase Firestore!`
-          : `Laporan ${selectedStatus} berhasil dikirim ke Firebase Firestore!`
+          ? `Presensi Masuk berhasil dicatat pada ${timeStr} WIB (${selectedShift?.nama_shift || 'Shift'} - ${punctualityCheck.deskripsi})! Foto diunggah ke Google Drive dan data tersimpan di Database MySQL/TiDB.`
+          : `Laporan ${selectedStatus} berhasil dikirim ke Database MySQL/TiDB!`
       );
     }
   };
@@ -1096,6 +1095,55 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Pengaturan Tingkat Kompresi & Info Google Drive */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-semibold text-[11px]">
+                    <Zap className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Mode Kompresi Foto (Hemat Ruang):</span>
+                  </div>
+                  <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px]">
+                    {(['eco', 'balanced', 'high'] as const).map((presetKey) => (
+                      <button
+                        type="button"
+                        key={presetKey}
+                        onClick={() => {
+                          setCompressPreset(presetKey);
+                          setSavedCompressionPreset(presetKey);
+                        }}
+                        className={`px-2 py-1 rounded-md font-semibold transition ${
+                          compressPreset === presetKey
+                            ? 'bg-sky-600 text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        {presetKey === 'eco'
+                          ? 'Super Hemat (~40KB)'
+                          : presetKey === 'balanced'
+                          ? 'Seimbang (~60KB)'
+                          : 'Kualitas (~100KB)'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-0.5 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <span className="flex items-center gap-1">
+                    <Cloud className="w-3 h-3 text-sky-500" />
+                    Tujuan Penyimpanan Foto:
+                  </span>
+                  {getCachedAccessToken() ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Google Drive (OAuth Aktif)
+                    </span>
+                  ) : (
+                    <span className="text-slate-500 italic">
+                      TiDB Cloud / MySQL Lokal
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="relative aspect-square max-w-[300px] mx-auto bg-slate-950 rounded-2xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-inner">

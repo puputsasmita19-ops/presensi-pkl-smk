@@ -51,13 +51,13 @@ import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
 import { DatabaseModal } from './components/DatabaseModal';
 import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
 import { getCachedAccessToken, logoutGoogle } from './services/googleAuth';
-import { getSavedGasWebhookUrl } from './services/gasDriveWebhook';
 import {
   getOfflineQueue,
   saveToOfflineQueue,
   savePresensiToDatabase,
   syncOfflinePresensiToDatabase,
 } from './services/offlinePresensiService';
+import { executeUnifiedPresensiSave } from './services/unifiedStorageService';
 import { getInitialTheme, applyTheme } from './utils/theme';
 import {
   fetchSiswaFromDb,
@@ -143,22 +143,111 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncToastMessage, setSyncToastMessage] = useState<string | null>(null);
 
-  // Global States with realistic initial datasets
-  const [siswaList, setSiswaList] = useState<Siswa[]>(INITIAL_SISWA);
-  const [dudiList, setDudiList] = useState<DUDI[]>(INITIAL_DUDI);
-  const [guruList, setGuruList] = useState<GuruPembimbing[]>(INITIAL_GURU);
-  const [presensiList, setPresensiList] = useState<Presensi[]>(INITIAL_PRESENSI);
-  const [jurnalList, setJurnalList] = useState<JurnalHarian[]>(INITIAL_JURNAL);
-  const [kunjunganGuruList, setKunjunganGuruList] = useState<KunjunganGuru[]>(() => {
-    const saved = localStorage.getItem('kunjungan_guru_list');
-    return saved ? JSON.parse(saved) : INITIAL_KUNJUNGAN_GURU;
+  // Global States with realistic initial datasets & resilient localStorage persistence
+  const [siswaList, setSiswaList] = useState<Siswa[]>(() => {
+    try {
+      const saved = localStorage.getItem('pkl_siswa_list');
+      return saved ? JSON.parse(saved) : INITIAL_SISWA;
+    } catch {
+      return INITIAL_SISWA;
+    }
   });
-  const [fonnteConfig, setFonnteConfig] = useState<FonnteConfig>(INITIAL_FONNTE_CONFIG);
-  const [logs, setLogs] = useState<LogAktivitas[]>(INITIAL_LOGS);
+
+  const [dudiList, setDudiList] = useState<DUDI[]>(() => {
+    try {
+      const saved = localStorage.getItem('pkl_dudi_list');
+      return saved ? JSON.parse(saved) : INITIAL_DUDI;
+    } catch {
+      return INITIAL_DUDI;
+    }
+  });
+
+  const [guruList, setGuruList] = useState<GuruPembimbing[]>(() => {
+    try {
+      const saved = localStorage.getItem('pkl_guru_list');
+      return saved ? JSON.parse(saved) : INITIAL_GURU;
+    } catch {
+      return INITIAL_GURU;
+    }
+  });
+
+  const [presensiList, setPresensiList] = useState<Presensi[]>(() => {
+    try {
+      const saved = localStorage.getItem('pkl_presensi_list');
+      return saved ? JSON.parse(saved) : INITIAL_PRESENSI;
+    } catch {
+      return INITIAL_PRESENSI;
+    }
+  });
+
+  const [jurnalList, setJurnalList] = useState<JurnalHarian[]>(() => {
+    try {
+      const saved = localStorage.getItem('pkl_jurnal_list');
+      return saved ? JSON.parse(saved) : INITIAL_JURNAL;
+    } catch {
+      return INITIAL_JURNAL;
+    }
+  });
+
+  const [kunjunganGuruList, setKunjunganGuruList] = useState<KunjunganGuru[]>(() => {
+    try {
+      const saved = localStorage.getItem('kunjungan_guru_list');
+      return saved ? JSON.parse(saved) : INITIAL_KUNJUNGAN_GURU;
+    } catch {
+      return INITIAL_KUNJUNGAN_GURU;
+    }
+  });
+
+  const [fonnteConfig, setFonnteConfig] = useState<FonnteConfig>(() => {
+    try {
+      const saved = localStorage.getItem('pkl_fonnte_config');
+      return saved ? JSON.parse(saved) : INITIAL_FONNTE_CONFIG;
+    } catch {
+      return INITIAL_FONNTE_CONFIG;
+    }
+  });
+
+  const [logs, setLogs] = useState<LogAktivitas[]>(() => {
+    try {
+      const saved = localStorage.getItem('pkl_system_logs');
+      return saved ? JSON.parse(saved) : INITIAL_LOGS;
+    } catch {
+      return INITIAL_LOGS;
+    }
+  });
+
+  // Simpan data master ke localStorage saat ada perubahan
+  useEffect(() => {
+    try { localStorage.setItem('pkl_siswa_list', JSON.stringify(siswaList)); } catch (e) { /* silent */ }
+  }, [siswaList]);
 
   useEffect(() => {
-    localStorage.setItem('kunjungan_guru_list', JSON.stringify(kunjunganGuruList));
+    try { localStorage.setItem('pkl_dudi_list', JSON.stringify(dudiList)); } catch (e) { /* silent */ }
+  }, [dudiList]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pkl_guru_list', JSON.stringify(guruList)); } catch (e) { /* silent */ }
+  }, [guruList]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pkl_presensi_list', JSON.stringify(presensiList)); } catch (e) { /* silent */ }
+  }, [presensiList]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pkl_jurnal_list', JSON.stringify(jurnalList)); } catch (e) { /* silent */ }
+  }, [jurnalList]);
+
+  useEffect(() => {
+    try { localStorage.setItem('kunjungan_guru_list', JSON.stringify(kunjunganGuruList)); } catch (e) { /* silent */ }
   }, [kunjunganGuruList]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pkl_fonnte_config', JSON.stringify(fonnteConfig)); } catch (e) { /* silent */ }
+  }, [fonnteConfig]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pkl_system_logs', JSON.stringify(logs.slice(0, 100))); } catch (e) { /* silent */ }
+  }, [logs]);
 
   // Tab Navigasi Aktif dengan dual-persistence (URL Hash + Storage tiers)
   const [activeTab, setActiveTab] = useState<string>(() => {
@@ -245,7 +334,7 @@ export default function App() {
 
   // Inisialisasi status koneksi Google Drive saat aplikasi dimuat
   useEffect(() => {
-    setIsGoogleConnected(!!getCachedAccessToken() || !!getSavedGasWebhookUrl());
+    setIsGoogleConnected(!!getCachedAccessToken());
   }, []);
 
   // Initialize offline queue from localStorage on mount
@@ -476,108 +565,53 @@ export default function App() {
     }
   };
 
-  // Presensi Handler: Menyimpan ke Database MySQL / TiDB Cloud dan antrean offline jika koneksi putus
+  // Presensi Handler: Menyimpan ke Google Drive (foto), Database MySQL / TiDB Cloud, dan antrean offline
   const handleSavePresensi = async (presensi: Presensi, sendWA: boolean) => {
-    const isDeviceOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    const activeSiswa = siswaList.find((s) => s.id_siswa === presensi.id_siswa);
+    const studentName = activeSiswa?.nama_lengkap || currentUser?.nama_lengkap || 'Siswa';
 
-    if (!isDeviceOnline) {
-      // 1. OFFLINE MODE: Simpan ke antrean localStorage
-      const offlinePresensi: Presensi = {
-        ...presensi,
-        is_offline_pending: true,
-        synced_to_db: false,
-        synced_to_firebase: false,
-      };
+    // Eksekusi Pipeline Penyimpanan Terpadu (Google Drive -> MySQL/TiDB -> Offline Queue jika gagal)
+    const { presensi: savedPresensi, report } = await executeUnifiedPresensiSave(presensi, studentName);
 
-      const updatedQueue = saveToOfflineQueue(offlinePresensi);
-      setPendingOfflineQueue(updatedQueue);
+    // Update state tampilan data presensi lokal
+    setPresensiList((prev) => {
+      const existingIdx = prev.findIndex((p) => p.id_presensi === savedPresensi.id_presensi);
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = savedPresensi;
+        return next;
+      }
+      return [savedPresensi, ...prev];
+    });
 
-      setPresensiList((prev) => {
-        const existingIdx = prev.findIndex((p) => p.id_presensi === offlinePresensi.id_presensi);
-        if (existingIdx >= 0) {
-          const next = [...prev];
-          next[existingIdx] = offlinePresensi;
-          return next;
-        }
-        return [offlinePresensi, ...prev];
-      });
-
-      addLog(
-        'Presensi',
-        offlinePresensi.jam_pulang ? 'Presensi Pulang (Offline)' : 'Presensi Masuk (Offline)',
-        `[Mode Offline] Presensi ${offlinePresensi.status} disimpan sementara di perangkat lokal. Akan otomatis dikirim ke Database MySQL/TiDB saat koneksi pulih.`,
-        'Peringatan',
-        currentUser,
-        'LocalStorage Offline Cache'
-      );
-
+    // Perbarui counter offline queue jika tersimpan secara offline
+    if (savedPresensi.is_offline_pending) {
+      setPendingOfflineQueue(getOfflineQueue());
       setSyncToastMessage(
-        'Mode Offline: Presensi berhasil disimpan di perangkat. Akan otomatis disinkronkan ke Database MySQL saat online.'
+        'Mode Offline: Presensi berhasil disimpan di perangkat. Akan otomatis disinkronkan ke Google Drive & Database MySQL saat online.'
       );
       setTimeout(() => setSyncToastMessage(null), 7000);
-      return;
     }
 
-    // 2. ONLINE MODE: Simpan langsung ke Database MySQL / TiDB
-    try {
-      await savePresensiToDatabase(presensi);
-
-      const onlinePresensi: Presensi = {
-        ...presensi,
-        is_offline_pending: false,
-        synced_to_db: true,
-        synced_to_firebase: true,
-        synced_at: new Date().toISOString(),
-      };
-
-      setPresensiList((prev) => {
-        const existingIdx = prev.findIndex((p) => p.id_presensi === onlinePresensi.id_presensi);
-        if (existingIdx >= 0) {
-          const next = [...prev];
-          next[existingIdx] = onlinePresensi;
-          return next;
-        }
-        return [onlinePresensi, ...prev];
-      });
-
-      addLog(
-        'Presensi',
-        presensi.jam_pulang ? 'Presensi Pulang' : 'Presensi Masuk',
-        `Presensi ${presensi.status} tersimpan di Database MySQL / TiDB (Jarak GPS: ${presensi.koordinat_absen.jarak_meter}m).`,
-        presensi.koordinat_absen.dalam_radius ? 'Sukses' : 'Peringatan',
-        currentUser,
-        'MySQL/TiDB Online'
-      );
-    } catch (dbErr: any) {
-      console.warn('Gagal menyimpan langsung ke Database, beralih ke antrean offline lokal:', dbErr);
-      const fallbackPresensi: Presensi = {
-        ...presensi,
-        is_offline_pending: true,
-        synced_to_db: false,
-        synced_to_firebase: false,
-      };
-      const updatedQueue = saveToOfflineQueue(fallbackPresensi);
-      setPendingOfflineQueue(updatedQueue);
-
-      setPresensiList((prev) => {
-        const existingIdx = prev.findIndex((p) => p.id_presensi === fallbackPresensi.id_presensi);
-        if (existingIdx >= 0) {
-          const next = [...prev];
-          next[existingIdx] = fallbackPresensi;
-          return next;
-        }
-        return [fallbackPresensi, ...prev];
-      });
-
-      addLog(
-        'Presensi',
-        'Disimpan di Perangkat (Offline)',
-        `Koneksi ke database belum terhubung (${dbErr?.message || 'Offline'}). Data aman tersimpan di perangkat lokal.`,
-        'Peringatan',
-        currentUser,
-        'LocalStorage Fallback'
-      );
+    // Catat log aktivitas sistem dengan detail status Drive & TiDB/MySQL
+    let logDetail = `Presensi ${savedPresensi.status} (${savedPresensi.jam_masuk || savedPresensi.jam_pulang || ''}).`;
+    if (report.driveSuccess) {
+      logDetail += ' Foto tersimpan di Google Drive (OAuth).';
     }
+    if (report.databaseSuccess) {
+      logDetail += ` Data tercatat di MySQL/TiDB Cloud.`;
+    } else {
+      logDetail += ` Data disimpan di cache offline lokal perangkat.`;
+    }
+
+    addLog(
+      'Presensi',
+      savedPresensi.jam_pulang ? 'Presensi Pulang' : 'Presensi Masuk',
+      logDetail,
+      report.databaseSuccess ? (savedPresensi.koordinat_absen.dalam_radius ? 'Sukses' : 'Peringatan') : 'Peringatan',
+      currentUser,
+      report.databaseSuccess ? (report.driveSuccess ? 'Drive + TiDB/MySQL' : 'TiDB/MySQL') : 'Offline Cache'
+    );
 
     // Handle WhatsApp Dispatch via Fonnte (if online)
     if (sendWA && (fonnteConfig.autoNotifyParentOnAbsence || fonnteConfig.autoNotifyOnCheckIn)) {

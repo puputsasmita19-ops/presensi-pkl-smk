@@ -117,6 +117,8 @@ async function initTablesIfConnected() {
         jam_pulang TIME,
         status VARCHAR(50) NOT NULL,
         foto_selfie LONGTEXT,
+        drive_file_id VARCHAR(255),
+        drive_view_url TEXT,
         latitude DECIMAL(10, 8),
         longitude DECIMAL(11, 8),
         jarak_meter INT,
@@ -132,6 +134,14 @@ async function initTablesIfConnected() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Pastikan kolom Google Drive ada jika tabel sudah pernah dibuat sebelumnya
+    try {
+      await db.query(`ALTER TABLE presensi ADD COLUMN drive_file_id VARCHAR(255) AFTER foto_selfie`);
+    } catch {}
+    try {
+      await db.query(`ALTER TABLE presensi ADD COLUMN drive_view_url TEXT AFTER drive_file_id`);
+    } catch {}
 
     // Tabel Jurnal Harian
     await db.query(`
@@ -331,14 +341,16 @@ app.post("/api/db/sync-all", async (req, res) => {
       await db.execute(
         `INSERT INTO presensi (
           id_presensi, id_siswa, tanggal, hari, jam_masuk, jam_pulang, status,
-          foto_selfie, latitude, longitude, jarak_meter, dalam_radius,
+          foto_selfie, drive_file_id, drive_view_url, latitude, longitude, jarak_meter, dalam_radius,
           id_shift, nama_shift, status_ketepatan, keterangan,
           status_persetujuan_dudi, catatan_dudi, disetujui_dudi_pada, nama_pembimbing_dudi
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           jam_pulang = VALUES(jam_pulang),
           status = VALUES(status),
           foto_selfie = VALUES(foto_selfie),
+          drive_file_id = VALUES(drive_file_id),
+          drive_view_url = VALUES(drive_view_url),
           status_ketepatan = VALUES(status_ketepatan),
           keterangan = VALUES(keterangan),
           status_persetujuan_dudi = VALUES(status_persetujuan_dudi),
@@ -354,6 +366,8 @@ app.post("/api/db/sync-all", async (req, res) => {
           p.jam_pulang || null,
           p.status || "Hadir Tepat Waktu",
           p.foto_selfie || "",
+          p.drive_file_id || null,
+          p.drive_view_url || null,
           p.koordinat_absen?.latitude || 0,
           p.koordinat_absen?.longitude || 0,
           p.koordinat_absen?.jarak_meter || 0,
@@ -605,6 +619,8 @@ app.get("/api/presensi", async (req, res) => {
       jam_pulang: r.jam_pulang || null,
       status: r.status,
       foto_selfie: r.foto_selfie || "",
+      drive_file_id: r.drive_file_id || undefined,
+      drive_view_url: r.drive_view_url || undefined,
       koordinat_absen: {
         latitude: parseFloat(r.latitude) || 0,
         longitude: parseFloat(r.longitude) || 0,
@@ -635,14 +651,16 @@ app.post("/api/presensi", async (req, res) => {
     const query = `
       INSERT INTO presensi (
         id_presensi, id_siswa, tanggal, hari, jam_masuk, jam_pulang, status,
-        foto_selfie, latitude, longitude, jarak_meter, dalam_radius,
+        foto_selfie, drive_file_id, drive_view_url, latitude, longitude, jarak_meter, dalam_radius,
         id_shift, nama_shift, status_ketepatan, keterangan,
         status_persetujuan_dudi, catatan_dudi, disetujui_dudi_pada, nama_pembimbing_dudi
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         jam_pulang = VALUES(jam_pulang),
         status = VALUES(status),
         foto_selfie = VALUES(foto_selfie),
+        drive_file_id = VALUES(drive_file_id),
+        drive_view_url = VALUES(drive_view_url),
         status_ketepatan = VALUES(status_ketepatan),
         keterangan = VALUES(keterangan),
         status_persetujuan_dudi = VALUES(status_persetujuan_dudi),
@@ -660,6 +678,8 @@ app.post("/api/presensi", async (req, res) => {
       p.jam_pulang || null,
       p.status,
       p.foto_selfie || "",
+      p.drive_file_id || null,
+      p.drive_view_url || null,
       p.koordinat_absen?.latitude || 0,
       p.koordinat_absen?.longitude || 0,
       p.koordinat_absen?.jarak_meter || 0,

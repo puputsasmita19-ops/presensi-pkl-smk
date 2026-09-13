@@ -32,6 +32,7 @@ import {
   compressImageFile,
   compressDataUrl,
   formatKB,
+  getActiveCompressOptions,
 } from '../utils/imageCompressor';
 
 interface PresensiKunjunganGuruProps {
@@ -294,11 +295,7 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
           );
 
           const rawDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-          const compResult = await compressDataUrl(rawDataUrl, undefined, undefined, {
-            maxWidth: 720,
-            maxHeight: 720,
-            quality: 0.78,
-          });
+          const compResult = await compressDataUrl(rawDataUrl, undefined, undefined, getActiveCompressOptions());
 
           setCapturedPhoto(compResult.dataUrl);
           setCompressionStats({
@@ -389,11 +386,7 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
           subtitle: `DUDI: ${activeDudi?.nama_instansi || 'Instansi PKL'} • ${todayStr} ${getCurrentTimeHHMMSS()} WIB • Terverifikasi`,
         };
 
-        const result = await compressImageFile(file, watermarkData, {
-          maxWidth: 720,
-          maxHeight: 720,
-          quality: 0.78,
-        });
+        const result = await compressImageFile(file, watermarkData, getActiveCompressOptions());
 
         setCapturedPhoto(result.dataUrl);
         setCompressionStats({

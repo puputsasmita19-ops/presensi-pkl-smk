@@ -11,6 +11,7 @@ import {
   User,
   Building2,
   Eye,
+  ExternalLink,
   MapPin,
   Sparkles,
   Info,
@@ -604,21 +605,34 @@ export const KalenderInteraktifPresensi: React.FC<KalenderInteraktifPresensiProp
                         referrerPolicy="no-referrer"
                       />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenLightbox &&
-                        onOpenLightbox(
-                          activeRecord.foto_selfie,
-                          `Presensi ${activeRecord.tanggal} (${activeRecord.status})`,
-                          `Masuk: ${activeRecord.jam_masuk} • ${activeRecord.koordinat_absen?.jarak_meter || 0}m dari DUDI`
-                        )
-                      }
-                      className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Perbesar</span>
-                    </button>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenLightbox &&
+                          onOpenLightbox(
+                            activeRecord.foto_selfie,
+                            `Presensi ${activeRecord.tanggal} (${activeRecord.status})`,
+                            `Masuk: ${activeRecord.jam_masuk} • ${activeRecord.koordinat_absen?.jarak_meter || 0}m dari DUDI`
+                          )
+                        }
+                        className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Perbesar</span>
+                      </button>
+                      {activeRecord.drive_view_url && (
+                        <a
+                          href={activeRecord.drive_view_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Google Drive</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-slate-400 italic">

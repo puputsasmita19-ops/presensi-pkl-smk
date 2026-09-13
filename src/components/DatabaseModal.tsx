@@ -120,9 +120,9 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
   const sampleEnv = `# Konfigurasi TiDB Cloud / MySQL Online
 MYSQL_HOST=gateway01.ap-southeast-1.prod.aws.tidbcloud.com
 MYSQL_PORT=4000
-MYSQL_USER=your_tidb_username.root
+MYSQL_USER=349mpFScgYPyr7v.root
 MYSQL_PASSWORD=your_tidb_password
-MYSQL_DATABASE=test
+MYSQL_DATABASE=db_presensi_pkl
 MYSQL_SSL=true`;
 
   const copyEnvToClipboard = () => {

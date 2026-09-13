@@ -102,6 +102,8 @@ export interface Presensi {
   synced_to_db?: boolean;
   synced_to_firebase?: boolean; // deprecated, alias for synced_to_db
   synced_at?: string;
+  drive_file_id?: string;
+  drive_view_url?: string;
 
   // Persetujuan Presensi oleh Pembimbing DUDI
   status_persetujuan_dudi?: StatusPersetujuanDudi;

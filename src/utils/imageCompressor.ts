@@ -7,8 +7,67 @@
 export interface CompressOptions {
   maxWidth?: number;
   maxHeight?: number;
-  quality?: number; // 0.1 s.d. 1.0 (default: 0.78)
+  quality?: number; // 0.1 s.d. 1.0 (default: 0.70 untuk hemat ruang optimal)
   mimeType?: 'image/jpeg' | 'image/webp';
+}
+
+export type CompressionPreset = 'eco' | 'balanced' | 'high';
+
+export interface CompressPresetInfo extends CompressOptions {
+  name: string;
+  estimatedSize: string;
+  description: string;
+}
+
+export const COMPRESSION_PRESETS: Record<CompressionPreset, CompressPresetInfo> = {
+  // Mode Super Hemat (Cocok untuk kuota hemat & database/drive sangat ramping, ~35-50 KB)
+  eco: {
+    name: 'Super Hemat',
+    estimatedSize: '~35-50 KB / foto',
+    description: 'Ukuran file terkecil, sangat menghemat kuota internet dan kuota Drive.',
+    maxWidth: 600,
+    maxHeight: 600,
+    quality: 0.65,
+    mimeType: 'image/jpeg',
+  },
+  // Mode Seimbang (Rekomendasi default: resolusi tajam, tanda air jernih, ~50-75 KB, hemat >90%)
+  balanced: {
+    name: 'Seimbang (Default)',
+    estimatedSize: '~50-75 KB / foto',
+    description: 'Rekomendasi terbaik: wajah jelas, tanda air tajam, hemat ruang hingga 95%.',
+    maxWidth: 720,
+    maxHeight: 720,
+    quality: 0.72,
+    mimeType: 'image/jpeg',
+  },
+  // Mode Kualitas Tinggi (800px, ~80-120 KB)
+  high: {
+    name: 'Kualitas Tinggi',
+    estimatedSize: '~80-120 KB / foto',
+    description: 'Resolusi lebih tinggi untuk arsip sertifikasi atau dokumentasi resmi.',
+    maxWidth: 800,
+    maxHeight: 800,
+    quality: 0.82,
+    mimeType: 'image/jpeg',
+  },
+};
+
+const STORAGE_KEY_COMPRESS_PRESET = 'pkl_compression_preset';
+
+export function getSavedCompressionPreset(): CompressionPreset {
+  if (typeof window === 'undefined') return 'balanced';
+  const val = localStorage.getItem(STORAGE_KEY_COMPRESS_PRESET) as CompressionPreset;
+  return val && COMPRESSION_PRESETS[val] ? val : 'balanced';
+}
+
+export function setSavedCompressionPreset(preset: CompressionPreset): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEY_COMPRESS_PRESET, preset);
+}
+
+export function getActiveCompressOptions(): CompressOptions {
+  const preset = getSavedCompressionPreset();
+  return COMPRESSION_PRESETS[preset] || COMPRESSION_PRESETS.balanced;
 }
 
 export interface CompressionResult {
@@ -83,10 +142,11 @@ export async function compressDataUrl(
   watermark?: WatermarkData,
   options?: CompressOptions
 ): Promise<CompressionResult> {
-  const maxWidth = options?.maxWidth || 720;
-  const maxHeight = options?.maxHeight || 720;
-  const quality = options?.quality !== undefined ? options?.quality : 0.78;
-  const mimeType = options?.mimeType || 'image/jpeg';
+  const activeOpts = options || getActiveCompressOptions();
+  const maxWidth = activeOpts.maxWidth || 720;
+  const maxHeight = activeOpts.maxHeight || 720;
+  const quality = activeOpts.quality !== undefined ? activeOpts.quality : 0.72;
+  const mimeType = activeOpts.mimeType || 'image/jpeg';
 
   const origKB = knownOriginalSizeKB || getBase64SizeKB(dataUrl);
 
