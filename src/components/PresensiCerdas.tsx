@@ -1457,13 +1457,36 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                     Masuk: {p.jam_masuk} WIB | Pulang: {p.jam_pulang || '-'}
                   </p>
                 </div>
-                <div className="text-right">
-                  {p.koordinat_absen?.jarak_meter ? (
-                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
-                      {p.koordinat_absen.jarak_meter} m
-                    </span>
-                  ) : null}
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">WA Terkirim</span>
+                <div className="flex items-center gap-2">
+                  {p.foto_selfie && (
+                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 shadow-xs bg-slate-100 dark:bg-slate-800">
+                      <img
+                        src={p.foto_selfie}
+                        alt="Selfie"
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  )}
+                  <div className="text-right">
+                    {p.drive_view_url ? (
+                      <a
+                        href={p.drive_view_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900 text-sky-700 dark:text-sky-300 text-[10px] font-semibold border border-sky-200 dark:border-sky-800 transition"
+                        title="Buka foto selfie asli di Google Drive"
+                      >
+                        <Cloud className="w-2.5 h-2.5 text-sky-500" />
+                        <span>Drive</span>
+                      </a>
+                    ) : p.koordinat_absen?.jarak_meter ? (
+                      <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
+                        {p.koordinat_absen.jarak_meter} m
+                      </span>
+                    ) : null}
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">WA Terkirim</span>
+                  </div>
                 </div>
               </div>
             );
