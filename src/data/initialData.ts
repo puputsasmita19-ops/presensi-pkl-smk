@@ -756,12 +756,12 @@ export const INITIAL_LOGS: LogAktivitas[] = [
     id_log: 'LOG-20260909-140022',
     waktu: '2026-09-09 14:00:22',
     kategori: 'Sistem',
-    aksi: 'Sinkronisasi Data Firebase',
-    deskripsi: 'Aturan keamanan firestore.rules dan blueprint database berhasil disinkronisasi.',
-    pengguna: 'Firebase Admin',
+    aksi: 'Inisialisasi Database & Storage',
+    deskripsi: 'Sistem database dan media penyimpanan foto berhasil disiapkan.',
+    pengguna: 'Administrator',
     role: 'Admin',
     status: 'Sukses',
-    ip_device: 'Cloud Run Container',
+    ip_device: 'Server Backend',
   },
 ];
 

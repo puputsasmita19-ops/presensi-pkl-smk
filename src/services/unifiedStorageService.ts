@@ -1,17 +1,19 @@
 import { Presensi, KunjunganGuru } from '../types';
 import { getCachedAccessToken } from './googleAuth';
 import { uploadFileToDrive, getOrCreatePklFolder } from './googleDrive';
-import { savePresensiToDb, saveKunjunganToDb } from '../utils/apiService';
+import { savePresensiToDb, saveKunjunganToDb, uploadPhotoToServer } from '../utils/apiService';
 import { saveToOfflineQueue, removeFromOfflineQueue } from './offlinePresensiService';
+import { savePresensiToIndexedDb, saveKunjunganToIndexedDb } from './indexedDbService';
 
 export interface StorageExecutionReport {
   success: boolean;
   driveSuccess: boolean;
   driveUrl?: string;
   driveFileId?: string;
-  driveMethod?: 'oauth' | 'none';
+  driveMethod?: 'oauth' | 'server' | 'none';
+  serverPhotoSaved: boolean;
   databaseSuccess: boolean;
-  databaseDestination: 'tidb_mysql' | 'offline_local';
+  databaseDestination: 'tidb_mysql' | 'server_db' | 'offline_local';
   isOffline: boolean;
   errorMessages: string[];
 }
@@ -61,10 +63,10 @@ export async function uploadPresensiPhotoToDrive(
 }
 
 /**
- * Pipeline Penyimpanan Terpadu Presensi:
- * 1. Upload foto ke Google Drive jika terhubung (GAS Webhook / OAuth)
- * 2. Sematkan link Google Drive ke record data
- * 3. Simpan metadata presensi ke MySQL / TiDB Cloud (atau antrean offline jika koneksi offline/gagal)
+ * Pipeline Penyimpanan Terpadu Presensi Siswa:
+ * 1. Simpan foto ke penyimpanan permanen server & Google Drive
+ * 2. Simpan cache foto & presensi ke IndexedDB lokal (bebas limit 5MB)
+ * 3. Simpan metadata presensi ke MySQL / Server Database
  */
 export async function executeUnifiedPresensiSave(
   presensi: Presensi,
@@ -75,6 +77,7 @@ export async function executeUnifiedPresensiSave(
     success: false,
     driveSuccess: false,
     driveMethod: 'none',
+    serverPhotoSaved: false,
     databaseSuccess: false,
     databaseDestination: 'offline_local',
     isOffline: !isDeviceOnline,
@@ -83,8 +86,33 @@ export async function executeUnifiedPresensiSave(
 
   let workingPresensi: Presensi = { ...presensi };
 
-  // LANGKAH 1: Unggah ke Google Drive (jika online & berkoneksi)
-  if (isDeviceOnline) {
+  // LANGKAH 1: Simpan ke IndexedDB lokal segera (menghindari kehilangan data jika browser tertutup)
+  try {
+    await savePresensiToIndexedDb(workingPresensi);
+  } catch (idbErr) {
+    console.warn('Gagal menyimpan presensi ke IndexedDB:', idbErr);
+  }
+
+  // LANGKAH 2: Unggah foto ke Server Storage File & Google Drive
+  if (isDeviceOnline && workingPresensi.foto_selfie?.startsWith('data:image')) {
+    // A. Simpan ke Server File Storage (/api/uploads)
+    try {
+      const serverPhotoRes = await uploadPhotoToServer(
+        workingPresensi.foto_selfie,
+        workingPresensi.id_presensi,
+        'selfie'
+      );
+      if (serverPhotoRes.success && serverPhotoRes.url) {
+        report.serverPhotoSaved = true;
+        if (!workingPresensi.drive_view_url) {
+          workingPresensi.drive_view_url = serverPhotoRes.url;
+        }
+      }
+    } catch (err: any) {
+      console.warn('Gagal simpan foto ke server storage:', err?.message);
+    }
+
+    // B. Unggah ke Google Drive jika akun Google terhubung
     try {
       const driveRes = await uploadPresensiPhotoToDrive(workingPresensi, studentName);
       if (driveRes.driveUrl || driveRes.driveFileId) {
@@ -104,7 +132,7 @@ export async function executeUnifiedPresensiSave(
     }
   }
 
-  // LANGKAH 2: Simpan ke Database MySQL / TiDB Cloud
+  // LANGKAH 3: Simpan ke Database Backend (MySQL atau Server Local DB)
   if (isDeviceOnline) {
     try {
       const cleanPayload: Presensi = {
@@ -141,11 +169,11 @@ export async function executeUnifiedPresensiSave(
         // Hapus dari offline queue jika sebelumnya ada
         removeFromOfflineQueue(workingPresensi.id_presensi);
       } else {
-        throw new Error('API server /api/presensi mengembalikan status gagal');
+        throw new Error('Gagal menyimpan presensi ke backend API.');
       }
     } catch (dbErr: any) {
-      report.errorMessages.push(`Database MySQL/TiDB: ${dbErr?.message || 'Koneksi database terganggu'}`);
-      // Fallback ke penyimpanan lokal aman
+      report.errorMessages.push(`Database: ${dbErr?.message || 'Koneksi database terganggu'}`);
+      // Fallback ke offline queue
       const fallbackPresensi: Presensi = {
         ...workingPresensi,
         is_offline_pending: true,
@@ -169,7 +197,11 @@ export async function executeUnifiedPresensiSave(
     report.databaseDestination = 'offline_local';
   }
 
-  // Sukses jika minimal data aman tersimpan (baik di MySQL/TiDB atau offline queue)
+  // Update ulang ke IndexedDB dengan URL foto terbaru
+  try {
+    await savePresensiToIndexedDb(workingPresensi);
+  } catch {}
+
   report.success = true;
   return { presensi: workingPresensi, report };
 }
@@ -219,9 +251,9 @@ export async function uploadKunjunganPhotoToDrive(
 
 /**
  * Pipeline Penyimpanan Terpadu Presensi Kunjungan Guru:
- * 1. Upload foto bukti ke Google Drive jika terhubung (OAuth)
- * 2. Sematkan link Google Drive ke data kunjungan guru
- * 3. Simpan data kunjungan ke MySQL / TiDB Cloud (jika terkonfigurasi)
+ * 1. Simpan foto bukti supervisi ke server storage & Google Drive
+ * 2. Simpan cache foto & kunjungan ke IndexedDB lokal
+ * 3. Simpan data kunjungan ke MySQL / Server Database
  */
 export async function executeUnifiedKunjunganSave(
   kunjungan: KunjunganGuru
@@ -231,6 +263,7 @@ export async function executeUnifiedKunjunganSave(
     success: false,
     driveSuccess: false,
     driveMethod: 'none',
+    serverPhotoSaved: false,
     databaseSuccess: false,
     databaseDestination: 'offline_local',
     isOffline: !isDeviceOnline,
@@ -239,8 +272,33 @@ export async function executeUnifiedKunjunganSave(
 
   let workingKunjungan: KunjunganGuru = { ...kunjungan };
 
-  // LANGKAH 1: Unggah ke Google Drive jika terhubung
-  if (isDeviceOnline) {
+  // LANGKAH 1: Simpan ke IndexedDB lokal segera
+  try {
+    await saveKunjunganToIndexedDb(workingKunjungan);
+  } catch (idbErr) {
+    console.warn('Gagal menyimpan kunjungan ke IndexedDB:', idbErr);
+  }
+
+  // LANGKAH 2: Unggah foto ke Server Storage File & Google Drive
+  if (isDeviceOnline && workingKunjungan.foto_kunjungan?.startsWith('data:image')) {
+    // A. Simpan ke Server File Storage (/api/uploads)
+    try {
+      const serverPhotoRes = await uploadPhotoToServer(
+        workingKunjungan.foto_kunjungan,
+        workingKunjungan.id_kunjungan,
+        'kunjungan'
+      );
+      if (serverPhotoRes.success && serverPhotoRes.url) {
+        report.serverPhotoSaved = true;
+        if (!workingKunjungan.drive_view_url) {
+          workingKunjungan.drive_view_url = serverPhotoRes.url;
+        }
+      }
+    } catch (err: any) {
+      console.warn('Gagal simpan foto kunjungan ke server storage:', err?.message);
+    }
+
+    // B. Unggah ke Google Drive jika akun Google terhubung
     try {
       const driveRes = await uploadKunjunganPhotoToDrive(workingKunjungan);
       if (driveRes.driveUrl || driveRes.driveFileId) {
@@ -260,7 +318,7 @@ export async function executeUnifiedKunjunganSave(
     }
   }
 
-  // LANGKAH 2: Simpan ke Database MySQL / TiDB
+  // LANGKAH 3: Simpan ke Database Backend (MySQL atau Server Local DB)
   if (isDeviceOnline) {
     try {
       const dbSuccess = await saveKunjunganToDb(workingKunjungan);
@@ -273,9 +331,14 @@ export async function executeUnifiedKunjunganSave(
         };
       }
     } catch (dbErr: any) {
-      report.errorMessages.push(`Database MySQL/TiDB: ${dbErr?.message || 'Koneksi database terganggu'}`);
+      report.errorMessages.push(`Database: ${dbErr?.message || 'Koneksi database terganggu'}`);
     }
   }
+
+  // Update ulang ke IndexedDB dengan URL foto terbaru
+  try {
+    await saveKunjunganToIndexedDb(workingKunjungan);
+  } catch {}
 
   report.success = true;
   return { kunjungan: workingKunjungan, report };

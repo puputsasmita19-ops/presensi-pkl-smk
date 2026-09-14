@@ -59,6 +59,27 @@ export interface SyncAllResult {
   };
 }
 
+export const uploadPhotoToServer = async (
+  photoBase64: string,
+  id: string,
+  prefix: 'selfie' | 'kunjungan' | 'foto' = 'foto'
+): Promise<{ success: boolean; url?: string; fileName?: string; error?: string }> => {
+  try {
+    const res = await fetch('/api/upload-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo: photoBase64, id, prefix }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { success: false, error: data.error || `Upload gagal (${res.status})` };
+    }
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+};
+
 export const syncAllDataToDb = async (payload: SyncAllPayload): Promise<SyncAllResult> => {
   try {
     const res = await fetch('/api/db/sync-all', {

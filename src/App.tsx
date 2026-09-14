@@ -58,6 +58,12 @@ import {
   syncOfflinePresensiToDatabase,
 } from './services/offlinePresensiService';
 import { executeUnifiedPresensiSave, executeUnifiedKunjunganSave } from './services/unifiedStorageService';
+import {
+  getAllPresensiFromIndexedDb,
+  getAllKunjunganFromIndexedDb,
+  savePresensiToIndexedDb,
+  saveKunjunganToIndexedDb,
+} from './services/indexedDbService';
 import { getInitialTheme, applyTheme } from './utils/theme';
 import {
   fetchSiswaFromDb,
@@ -233,6 +239,10 @@ export default function App() {
 
   useEffect(() => {
     try { localStorage.setItem('pkl_presensi_list', JSON.stringify(presensiList)); } catch (e) { /* silent */ }
+    // Simpan ke IndexedDB untuk penyimpanan foto persisten bebas limit 5MB
+    presensiList.forEach((p) => {
+      savePresensiToIndexedDb(p).catch(() => {});
+    });
   }, [presensiList]);
 
   useEffect(() => {
@@ -241,6 +251,10 @@ export default function App() {
 
   useEffect(() => {
     try { localStorage.setItem('kunjungan_guru_list', JSON.stringify(kunjunganGuruList)); } catch (e) { /* silent */ }
+    // Simpan ke IndexedDB untuk foto supervisi guru persisten
+    kunjunganGuruList.forEach((k) => {
+      saveKunjunganToIndexedDb(k).catch(() => {});
+    });
   }, [kunjunganGuruList]);
 
   useEffect(() => {
@@ -344,11 +358,51 @@ export default function App() {
     setPendingOfflineQueue(getOfflineQueue());
   }, []);
 
-  // Memuat data terbaru dari Backend MySQL jika database online terhubung
+  // Memuat data terbaru dari Backend Server & IndexedDB lokal saat aplikasi dimuat
   useEffect(() => {
     let isMounted = true;
     const loadFromDatabase = async () => {
       try {
+        // 1. Muat dari IndexedDB terlebih dahulu (foto & data lokal offline)
+        const [idbPresensi, idbKunjungan] = await Promise.all([
+          getAllPresensiFromIndexedDb().catch(() => []),
+          getAllKunjunganFromIndexedDb().catch(() => []),
+        ]);
+
+        if (isMounted) {
+          if (idbPresensi && idbPresensi.length > 0) {
+            setPresensiList((prev) => {
+              const map = new Map<string, Presensi>();
+              idbPresensi.forEach((p) => map.set(p.id_presensi, p));
+              prev.forEach((p) => {
+                if (!map.has(p.id_presensi)) {
+                  map.set(p.id_presensi, p);
+                } else {
+                  const existing = map.get(p.id_presensi)!;
+                  if (!existing.foto_selfie && p.foto_selfie) {
+                    map.set(p.id_presensi, { ...existing, foto_selfie: p.foto_selfie });
+                  }
+                }
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (idbKunjungan && idbKunjungan.length > 0) {
+            setKunjunganGuruList((prev) => {
+              const map = new Map<string, KunjunganGuru>();
+              idbKunjungan.forEach((k) => map.set(k.id_kunjungan, k));
+              prev.forEach((k) => {
+                if (!map.has(k.id_kunjungan)) {
+                  map.set(k.id_kunjungan, k);
+                }
+              });
+              return Array.from(map.values());
+            });
+          }
+        }
+
+        // 2. Muat data dari Backend API (MySQL / Server Local DB)
         const [dbSiswa, dbDudi, dbPresensi, dbJurnal, dbKunjungan] = await Promise.all([
           fetchSiswaFromDb(),
           fetchDudiFromDb(),
@@ -366,16 +420,48 @@ export default function App() {
           setDudiList(dbDudi);
         }
         if (dbPresensi && dbPresensi.length > 0) {
-          setPresensiList(dbPresensi);
+          setPresensiList((prev) => {
+            const map = new Map<string, Presensi>();
+            prev.forEach((p) => map.set(p.id_presensi, p));
+            dbPresensi.forEach((p) => {
+              const existing = map.get(p.id_presensi);
+              if (existing) {
+                map.set(p.id_presensi, {
+                  ...existing,
+                  ...p,
+                  foto_selfie: p.foto_selfie || existing.foto_selfie,
+                });
+              } else {
+                map.set(p.id_presensi, p);
+              }
+            });
+            return Array.from(map.values());
+          });
         }
         if (dbJurnal && dbJurnal.length > 0) {
           setJurnalList(dbJurnal);
         }
         if (dbKunjungan && dbKunjungan.length > 0) {
-          setKunjunganGuruList(dbKunjungan);
+          setKunjunganGuruList((prev) => {
+            const map = new Map<string, KunjunganGuru>();
+            prev.forEach((k) => map.set(k.id_kunjungan, k));
+            dbKunjungan.forEach((k) => {
+              const existing = map.get(k.id_kunjungan);
+              if (existing) {
+                map.set(k.id_kunjungan, {
+                  ...existing,
+                  ...k,
+                  foto_kunjungan: k.foto_kunjungan || existing.foto_kunjungan,
+                });
+              } else {
+                map.set(k.id_kunjungan, k);
+              }
+            });
+            return Array.from(map.values());
+          });
         }
       } catch (err) {
-        console.info('Penyimpanan lokal aktif (MySQL online standby).');
+        console.info('Penyimpanan lokal aktif (Server DB / IndexedDB standby).');
       }
     };
 

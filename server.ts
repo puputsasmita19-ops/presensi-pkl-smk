@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
@@ -9,8 +10,86 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "25mb" }));
-app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+// Pastikan direktori penyimpanan foto & database lokal tersedia
+const DATA_DIR = path.join(process.cwd(), "data");
+const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+const DB_FILE = path.join(DATA_DIR, "db.json");
+
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn("Gagal membuat direktori data/uploads:", err);
+}
+
+// Layanan File Statis Foto Bukti Presensi & Kunjungan
+app.use("/api/uploads", express.static(UPLOADS_DIR));
+
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Helper Penyimpanan Data Lokal Disk Server (Fallback saat MySQL belum/sedang terhubung)
+interface LocalDbStore {
+  siswa: any[];
+  dudi: any[];
+  presensi: any[];
+  jurnal: any[];
+  kunjungan: any[];
+  users: any[];
+}
+
+function readLocalDb(): LocalDbStore {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.warn("Gagal membaca db.json lokal:", e);
+  }
+  return { siswa: [], dudi: [], presensi: [], jurnal: [], kunjungan: [], users: [] };
+}
+
+function writeLocalDb(data: Partial<LocalDbStore>) {
+  try {
+    const current = readLocalDb();
+    const updated = { ...current, ...data };
+    fs.writeFileSync(DB_FILE, JSON.stringify(updated, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Gagal menulis ke db.json lokal:", e);
+  }
+}
+
+// Helper Simpan Foto Base64 ke File Disk Server
+function saveBase64ImageToDisk(base64Str: string, id: string, prefix: string = "foto"): { localUrl: string; fileName: string } | null {
+  if (!base64Str || typeof base64Str !== "string" || !base64Str.startsWith("data:image")) {
+    return null;
+  }
+
+  try {
+    const matches = base64Str.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+    if (!matches) return null;
+
+    const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
+    const base64Data = matches[2];
+    const cleanId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const fileName = `${prefix}_${cleanId}.${ext}`;
+    const filePath = path.join(UPLOADS_DIR, fileName);
+
+    fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
+    return {
+      localUrl: `/api/uploads/${fileName}`,
+      fileName,
+    };
+  } catch (err) {
+    console.warn("Gagal menyimpan foto ke disk:", err);
+    return null;
+  }
+}
 
 // Helper lazy MySQL connection pool
 let pool: mysql.Pool | null = null;
@@ -225,15 +304,48 @@ async function initTablesIfConnected() {
 
 // ---------------------- API ROUTES ----------------------
 
+// 0. Dedicated Photo Upload API (Simpan Foto Base64 ke File Disk Server)
+app.post("/api/upload-photo", async (req, res) => {
+  try {
+    const { photo, id, prefix = "foto", mimeType = "image/jpeg" } = req.body;
+    if (!photo || typeof photo !== "string") {
+      return res.status(400).json({ error: "Data foto (base64) wajib disertakan." });
+    }
+
+    const saved = saveBase64ImageToDisk(photo, id || `file_${Date.now()}`, prefix);
+    if (!saved) {
+      return res.status(500).json({ error: "Gagal memproses dan menyimpan file foto ke disk server." });
+    }
+
+    res.json({
+      success: true,
+      url: saved.localUrl,
+      fileName: saved.fileName,
+      message: "Foto berhasil disimpan di penyimpanan server.",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 1. Status Koneksi MySQL / TiDB Cloud
 app.get("/api/db/status", async (req, res) => {
   const isConfigured = Boolean(process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE);
   if (!isConfigured) {
+    const localDb = readLocalDb();
     return res.json({
       connected: false,
       configured: false,
       isTiDB: false,
-      message: "Konfigurasi MySQL belum diatur di .env (MYSQL_HOST, MYSQL_USER, MYSQL_DATABASE)",
+      localStorageActive: true,
+      recordsCount: {
+        siswa: localDb.siswa.length,
+        dudi: localDb.dudi.length,
+        presensi: localDb.presensi.length,
+        kunjungan: localDb.kunjungan.length,
+        jurnal: localDb.jurnal.length,
+      },
+      message: "Menggunakan database lokal server (kredensial MySQL belum diatur di .env)",
     });
   }
 
@@ -243,7 +355,8 @@ app.get("/api/db/status", async (req, res) => {
       connected: false,
       configured: true,
       isTiDB: Boolean(process.env.MYSQL_HOST?.includes("tidbcloud") || process.env.MYSQL_PORT === "4000"),
-      message: "Gagal membuat pool koneksi MySQL",
+      localStorageActive: true,
+      message: "Gagal membuat pool koneksi MySQL, fallback ke penyimpanan server aktif",
     });
   }
 
@@ -280,25 +393,47 @@ app.get("/api/db/status", async (req, res) => {
         : "Terhubung aktif ke database MySQL Online",
     });
   } catch (error: any) {
-    return res.status(500).json({
+    return res.status(200).json({
       connected: false,
       configured: true,
       isTiDB: Boolean(process.env.MYSQL_HOST?.includes("tidbcloud") || process.env.MYSQL_PORT === "4000"),
-      message: "Gagal menyambung ke MySQL: " + error.message,
+      localStorageActive: true,
+      message: "Koneksi MySQL terganggu (" + error.message + "), penyimpanan lokal server aktif.",
     });
   }
 });
 
 // Endpoint Mass Sync: Mengunggah data lokal ke MySQL sekaligus
 app.post("/api/db/sync-all", async (req, res) => {
+  const { siswa = [], dudi = [], presensi = [], jurnal = [], kunjungan = [] } = req.body;
   const db = getDbPool();
+
+  // Selalu amankan ke local DB disk server
+  const currentDb = readLocalDb();
+  writeLocalDb({
+    siswa: siswa.length ? siswa : currentDb.siswa,
+    dudi: dudi.length ? dudi : currentDb.dudi,
+    presensi: presensi.length ? presensi : currentDb.presensi,
+    jurnal: jurnal.length ? jurnal : currentDb.jurnal,
+    kunjungan: kunjungan.length ? kunjungan : currentDb.kunjungan,
+  });
+
   if (!db) {
-    return res.status(503).json({ error: "MySQL belum terhubung. Konfigurasi kredensial terlebih dahulu." });
+    return res.json({
+      success: true,
+      message: "Data tersimpan di penyimpanan database lokal server.",
+      syncedCounts: {
+        siswa: siswa.length,
+        dudi: dudi.length,
+        presensi: presensi.length,
+        jurnal: jurnal.length,
+        kunjungan: kunjungan.length,
+      },
+    });
   }
 
   try {
-    const { siswa = [], dudi = [], presensi = [], jurnal = [] } = req.body;
-    let syncedCounts = { siswa: 0, dudi: 0, presensi: 0, jurnal: 0 };
+    let syncedCounts = { siswa: 0, dudi: 0, presensi: 0, jurnal: 0, kunjungan: 0 };
 
     // 1. Sync DUDI
     for (const d of dudi) {
@@ -403,7 +538,7 @@ app.post("/api/db/sync-all", async (req, res) => {
           p.hari || "",
           p.jam_masuk || "08:00",
           p.jam_pulang || null,
-          p.status || "Hadir Tepat Waktu",
+          p.status || "Hadir",
           p.foto_selfie || "",
           p.drive_file_id || null,
           p.drive_view_url || null,
@@ -465,275 +600,397 @@ app.post("/api/db/sync-all", async (req, res) => {
       syncedCounts.jurnal++;
     }
 
+    // 5. Sync Kunjungan Guru
+    for (const k of kunjungan) {
+      if (!k.id_kunjungan || !k.id_guru || !k.tanggal) continue;
+      await db.execute(
+        `INSERT INTO kunjungan (
+          id_kunjungan, id_guru, nama_guru, id_dudi, nama_dudi,
+          tanggal, jam_kunjungan, tujuan_kunjungan, catatan_evaluasi,
+          foto_kunjungan, drive_file_id, drive_view_url,
+          latitude, longitude, jarak_meter, dalam_radius,
+          siswa_dikunjungi, status_kunjungan
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          nama_guru = VALUES(nama_guru),
+          id_dudi = VALUES(id_dudi),
+          nama_dudi = VALUES(nama_dudi),
+          tanggal = VALUES(tanggal),
+          jam_kunjungan = VALUES(jam_kunjungan),
+          tujuan_kunjungan = VALUES(tujuan_kunjungan),
+          catatan_evaluasi = VALUES(catatan_evaluasi),
+          foto_kunjungan = VALUES(foto_kunjungan),
+          drive_file_id = VALUES(drive_file_id),
+          drive_view_url = VALUES(drive_view_url),
+          latitude = VALUES(latitude),
+          longitude = VALUES(longitude),
+          jarak_meter = VALUES(jarak_meter),
+          dalam_radius = VALUES(dalam_radius),
+          siswa_dikunjungi = VALUES(siswa_dikunjungi),
+          status_kunjungan = VALUES(status_kunjungan)`,
+        [
+          k.id_kunjungan,
+          k.id_guru,
+          k.nama_guru,
+          k.id_dudi,
+          k.nama_dudi,
+          k.tanggal,
+          k.jam_kunjungan,
+          k.tujuan_kunjungan,
+          k.catatan_evaluasi,
+          k.foto_kunjungan || "",
+          k.drive_file_id || null,
+          k.drive_view_url || null,
+          k.koordinat?.latitude || 0,
+          k.koordinat?.longitude || 0,
+          k.koordinat?.jarak_meter || 0,
+          k.koordinat?.dalam_radius ? 1 : 0,
+          JSON.stringify(k.siswa_dikunjungi || []),
+          k.status_kunjungan || "Selesai",
+        ]
+      );
+      syncedCounts.kunjungan++;
+    }
+
     res.json({
       success: true,
-      message: "Sinkronisasi massal ke database MySQL berhasil.",
+      message: "Sinkronisasi massal ke database MySQL & backup lokal berhasil.",
       syncedCounts,
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Gagal sinkronisasi data: " + err.message });
+    res.json({
+      success: true,
+      message: "Data tersimpan di penyimpanan disk server (MySQL warning: " + err.message + ")",
+    });
   }
 });
 
-// 2. SISWA: GET & POST
+// 2. SISWA: GET, POST & DELETE
 app.get("/api/siswa", async (req, res) => {
   const db = getDbPool();
-  if (!db) {
-    return res.status(503).json({ error: "MySQL belum terhubung. Periksa konfigurasi .env" });
+  if (db) {
+    try {
+      const [rows]: any = await db.query("SELECT * FROM siswa ORDER BY nama_lengkap ASC");
+      if (rows && rows.length > 0) {
+        const formatted = rows.map((r: any) => ({
+          id_siswa: r.id_siswa,
+          id_user: r.id_user || "",
+          nama_lengkap: r.nama_lengkap,
+          nis: r.nis,
+          kelas: r.kelas || "",
+          jurusan: r.jurusan || "",
+          id_dudi: r.id_dudi || "",
+          id_guru_pembimbing: r.id_guru_pembimbing || "",
+          nomor_wa: r.nomor_wa || "",
+          nomor_wa_ortu: r.nomor_wa_ortu || "",
+          alamat: r.alamat || "",
+          email: r.email || "",
+        }));
+        return res.json(formatted);
+      }
+    } catch (err) {
+      console.warn("Query siswa MySQL gagal, membaca db.json lokal:", err);
+    }
   }
 
-  try {
-    const [rows]: any = await db.query("SELECT * FROM siswa ORDER BY nama_lengkap ASC");
-    const formatted = rows.map((r: any) => ({
-      id_siswa: r.id_siswa,
-      id_user: r.id_user || "",
-      nama_lengkap: r.nama_lengkap,
-      nis: r.nis,
-      kelas: r.kelas || "",
-      jurusan: r.jurusan || "",
-      id_dudi: r.id_dudi || "",
-      id_guru_pembimbing: r.id_guru_pembimbing || "",
-      nomor_wa: r.nomor_wa || "",
-      nomor_wa_ortu: r.nomor_wa_ortu || "",
-      alamat: r.alamat || "",
-      email: r.email || "",
-    }));
-    res.json(formatted);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+  const localDb = readLocalDb();
+  res.json(localDb.siswa || []);
 });
 
 app.post("/api/siswa", async (req, res) => {
+  const s = req.body;
+  if (!s.id_siswa || !s.nama_lengkap || !s.nis) {
+    return res.status(400).json({ error: "id_siswa, nama_lengkap, dan nis wajib diisi." });
+  }
+
+  // Simpan ke local db
+  const localDb = readLocalDb();
+  const existingIdx = localDb.siswa.findIndex((x) => x.id_siswa === s.id_siswa);
+  if (existingIdx >= 0) {
+    localDb.siswa[existingIdx] = s;
+  } else {
+    localDb.siswa.push(s);
+  }
+  writeLocalDb({ siswa: localDb.siswa });
+
   const db = getDbPool();
-  if (!db) {
-    return res.status(503).json({ error: "MySQL belum terhubung. Periksa konfigurasi .env" });
-  }
-
-  try {
-    const s = req.body;
-    if (!s.id_siswa || !s.nama_lengkap || !s.nis) {
-      return res.status(400).json({ error: "id_siswa, nama_lengkap, dan nis wajib diisi." });
+  if (db) {
+    try {
+      const query = `
+        INSERT INTO siswa (
+          id_siswa, id_user, nama_lengkap, nis, kelas, jurusan,
+          id_dudi, id_guru_pembimbing, nomor_wa, nomor_wa_ortu, alamat, email
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          id_user = VALUES(id_user),
+          nama_lengkap = VALUES(nama_lengkap),
+          kelas = VALUES(kelas),
+          jurusan = VALUES(jurusan),
+          id_dudi = VALUES(id_dudi),
+          id_guru_pembimbing = VALUES(id_guru_pembimbing),
+          nomor_wa = VALUES(nomor_wa),
+          nomor_wa_ortu = VALUES(nomor_wa_ortu),
+          alamat = VALUES(alamat),
+          email = VALUES(email)
+      `;
+      await db.execute(query, [
+        s.id_siswa,
+        s.id_user || "",
+        s.nama_lengkap,
+        s.nis,
+        s.kelas || "",
+        s.jurusan || "",
+        s.id_dudi || "",
+        s.id_guru_pembimbing || "",
+        s.nomor_wa || "",
+        s.nomor_wa_ortu || "",
+        s.alamat || "",
+        s.email || "",
+      ]);
+    } catch (err: any) {
+      console.warn("Gagal simpan siswa ke MySQL:", err.message);
     }
-
-    const query = `
-      INSERT INTO siswa (
-        id_siswa, id_user, nama_lengkap, nis, kelas, jurusan,
-        id_dudi, id_guru_pembimbing, nomor_wa, nomor_wa_ortu, alamat, email
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        id_user = VALUES(id_user),
-        nama_lengkap = VALUES(nama_lengkap),
-        kelas = VALUES(kelas),
-        jurusan = VALUES(jurusan),
-        id_dudi = VALUES(id_dudi),
-        id_guru_pembimbing = VALUES(id_guru_pembimbing),
-        nomor_wa = VALUES(nomor_wa),
-        nomor_wa_ortu = VALUES(nomor_wa_ortu),
-        alamat = VALUES(alamat),
-        email = VALUES(email)
-    `;
-
-    await db.execute(query, [
-      s.id_siswa,
-      s.id_user || "",
-      s.nama_lengkap,
-      s.nis,
-      s.kelas || "",
-      s.jurusan || "",
-      s.id_dudi || "",
-      s.id_guru_pembimbing || "",
-      s.nomor_wa || "",
-      s.nomor_wa_ortu || "",
-      s.alamat || "",
-      s.email || "",
-    ]);
-
-    res.json({ success: true, message: "Data siswa berhasil disimpan ke MySQL" });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
   }
+
+  res.json({ success: true, message: "Data siswa berhasil disimpan." });
 });
 
 app.delete("/api/siswa/:id", async (req, res) => {
-  const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
+  const localDb = readLocalDb();
+  localDb.siswa = localDb.siswa.filter((x) => x.id_siswa !== req.params.id);
+  writeLocalDb({ siswa: localDb.siswa });
 
-  try {
-    await db.execute("DELETE FROM siswa WHERE id_siswa = ?", [req.params.id]);
-    res.json({ success: true, message: "Siswa berhasil dihapus dari MySQL" });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  const db = getDbPool();
+  if (db) {
+    try {
+      await db.execute("DELETE FROM siswa WHERE id_siswa = ?", [req.params.id]);
+    } catch {}
   }
+  res.json({ success: true, message: "Siswa berhasil dihapus." });
 });
 
 // 3. DUDI: GET & POST
 app.get("/api/dudi", async (req, res) => {
   const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
-  try {
-    const [rows]: any = await db.query("SELECT * FROM dudi ORDER BY nama_instansi ASC");
-    const formatted = rows.map((r: any) => ({
-      id_dudi: r.id_dudi,
-      nama_instansi: r.nama_instansi,
-      bidang: r.bidang || "",
-      alamat: r.alamat || "",
-      koordinat_lokasi: {
-        latitude: parseFloat(r.latitude) || -6.2,
-        longitude: parseFloat(r.longitude) || 106.816666,
-      },
-      radius_meter: r.radius_meter || 100,
-      hari_kerja: r.hari_kerja ? JSON.parse(r.hari_kerja) : ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"],
-      tipe_jadwal: r.tipe_jadwal || "Reguler",
-      daftar_shift: r.daftar_shift ? (typeof r.daftar_shift === "string" ? JSON.parse(r.daftar_shift) : r.daftar_shift) : [],
-      jam_masuk_standar: r.jam_masuk_standar || "08:00",
-      jam_pulang_standar: r.jam_pulang_standar || "16:30",
-    }));
-    res.json(formatted);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  if (db) {
+    try {
+      const [rows]: any = await db.query("SELECT * FROM dudi ORDER BY nama_instansi ASC");
+      if (rows && rows.length > 0) {
+        const formatted = rows.map((r: any) => ({
+          id_dudi: r.id_dudi,
+          nama_instansi: r.nama_instansi,
+          bidang: r.bidang || "",
+          alamat: r.alamat || "",
+          koordinat_lokasi: {
+            latitude: parseFloat(r.latitude) || -6.2,
+            longitude: parseFloat(r.longitude) || 106.816666,
+          },
+          radius_meter: r.radius_meter || 100,
+          hari_kerja: r.hari_kerja ? JSON.parse(r.hari_kerja) : ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"],
+          tipe_jadwal: r.tipe_jadwal || "Reguler",
+          daftar_shift: r.daftar_shift ? (typeof r.daftar_shift === "string" ? JSON.parse(r.daftar_shift) : r.daftar_shift) : [],
+          jam_masuk_standar: r.jam_masuk_standar || "08:00",
+          jam_pulang_standar: r.jam_pulang_standar || "16:30",
+        }));
+        return res.json(formatted);
+      }
+    } catch (err) {
+      console.warn("Query DUDI MySQL gagal, membaca db.json lokal:", err);
+    }
   }
+
+  const localDb = readLocalDb();
+  res.json(localDb.dudi || []);
 });
 
 app.post("/api/dudi", async (req, res) => {
-  const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
-  try {
-    const d = req.body;
-    const query = `
-      INSERT INTO dudi (
-        id_dudi, nama_instansi, bidang, alamat, latitude, longitude,
-        radius_meter, hari_kerja, tipe_jadwal, daftar_shift, jam_masuk_standar, jam_pulang_standar
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        nama_instansi = VALUES(nama_instansi),
-        bidang = VALUES(bidang),
-        alamat = VALUES(alamat),
-        latitude = VALUES(latitude),
-        longitude = VALUES(longitude),
-        radius_meter = VALUES(radius_meter),
-        hari_kerja = VALUES(hari_kerja),
-        tipe_jadwal = VALUES(tipe_jadwal),
-        daftar_shift = VALUES(daftar_shift),
-        jam_masuk_standar = VALUES(jam_masuk_standar),
-        jam_pulang_standar = VALUES(jam_pulang_standar)
-    `;
-
-    await db.execute(query, [
-      d.id_dudi,
-      d.nama_instansi,
-      d.bidang || "",
-      d.alamat || "",
-      d.koordinat_lokasi?.latitude || 0,
-      d.koordinat_lokasi?.longitude || 0,
-      d.radius_meter || 100,
-      JSON.stringify(d.hari_kerja || ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]),
-      d.tipe_jadwal || "Reguler",
-      JSON.stringify(d.daftar_shift || []),
-      d.jam_masuk_standar || "08:00",
-      d.jam_pulang_standar || "16:30",
-    ]);
-
-    res.json({ success: true, message: "Data DUDI berhasil disimpan ke MySQL" });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  const d = req.body;
+  const localDb = readLocalDb();
+  const existingIdx = localDb.dudi.findIndex((x) => x.id_dudi === d.id_dudi);
+  if (existingIdx >= 0) {
+    localDb.dudi[existingIdx] = d;
+  } else {
+    localDb.dudi.push(d);
   }
+  writeLocalDb({ dudi: localDb.dudi });
+
+  const db = getDbPool();
+  if (db) {
+    try {
+      const query = `
+        INSERT INTO dudi (
+          id_dudi, nama_instansi, bidang, alamat, latitude, longitude,
+          radius_meter, hari_kerja, tipe_jadwal, daftar_shift, jam_masuk_standar, jam_pulang_standar
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          nama_instansi = VALUES(nama_instansi),
+          bidang = VALUES(bidang),
+          alamat = VALUES(alamat),
+          latitude = VALUES(latitude),
+          longitude = VALUES(longitude),
+          radius_meter = VALUES(radius_meter),
+          hari_kerja = VALUES(hari_kerja),
+          tipe_jadwal = VALUES(tipe_jadwal),
+          daftar_shift = VALUES(daftar_shift),
+          jam_masuk_standar = VALUES(jam_masuk_standar),
+          jam_pulang_standar = VALUES(jam_pulang_standar)
+      `;
+      await db.execute(query, [
+        d.id_dudi,
+        d.nama_instansi,
+        d.bidang || "",
+        d.alamat || "",
+        d.koordinat_lokasi?.latitude || 0,
+        d.koordinat_lokasi?.longitude || 0,
+        d.radius_meter || 100,
+        JSON.stringify(d.hari_kerja || ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]),
+        d.tipe_jadwal || "Reguler",
+        JSON.stringify(d.daftar_shift || []),
+        d.jam_masuk_standar || "08:00",
+        d.jam_pulang_standar || "16:30",
+      ]);
+    } catch (err: any) {
+      console.warn("Gagal simpan DUDI ke MySQL:", err.message);
+    }
+  }
+
+  res.json({ success: true, message: "Data DUDI berhasil disimpan." });
 });
 
-// 4. PRESENSI: GET & POST
+// 4. PRESENSI: GET & POST (Menyimpan Data Presensi & Foto Selfie Siswa)
 app.get("/api/presensi", async (req, res) => {
   const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
-  try {
-    const [rows]: any = await db.query("SELECT * FROM presensi ORDER BY tanggal DESC, jam_masuk DESC");
-    const formatted = rows.map((r: any) => ({
-      id_presensi: r.id_presensi,
-      id_siswa: r.id_siswa,
-      tanggal: typeof r.tanggal === "string" ? r.tanggal.substring(0, 10) : new Date(r.tanggal).toISOString().substring(0, 10),
-      hari: r.hari || "",
-      jam_masuk: r.jam_masuk || "",
-      jam_pulang: r.jam_pulang || null,
-      status: r.status,
-      foto_selfie: r.foto_selfie || "",
-      drive_file_id: r.drive_file_id || undefined,
-      drive_view_url: r.drive_view_url || undefined,
-      koordinat_absen: {
-        latitude: parseFloat(r.latitude) || 0,
-        longitude: parseFloat(r.longitude) || 0,
-        jarak_meter: r.jarak_meter || 0,
-        dalam_radius: Boolean(r.dalam_radius),
-      },
-      id_shift: r.id_shift,
-      nama_shift: r.nama_shift,
-      status_ketepatan: r.status_ketepatan,
-      keterangan: r.keterangan,
-      status_persetujuan_dudi: r.status_persetujuan_dudi,
-      catatan_dudi: r.catatan_dudi,
-      disetujui_dudi_pada: r.disetujui_dudi_pada,
-      nama_pembimbing_dudi: r.nama_pembimbing_dudi,
-    }));
-    res.json(formatted);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  if (db) {
+    try {
+      const [rows]: any = await db.query("SELECT * FROM presensi ORDER BY tanggal DESC, jam_masuk DESC");
+      if (rows && rows.length > 0) {
+        const formatted = rows.map((r: any) => ({
+          id_presensi: r.id_presensi,
+          id_siswa: r.id_siswa,
+          tanggal: typeof r.tanggal === "string" ? r.tanggal.substring(0, 10) : new Date(r.tanggal).toISOString().substring(0, 10),
+          hari: r.hari || "",
+          jam_masuk: r.jam_masuk || "",
+          jam_pulang: r.jam_pulang || null,
+          status: r.status,
+          foto_selfie: r.foto_selfie || "",
+          drive_file_id: r.drive_file_id || undefined,
+          drive_view_url: r.drive_view_url || undefined,
+          koordinat_absen: {
+            latitude: parseFloat(r.latitude) || 0,
+            longitude: parseFloat(r.longitude) || 0,
+            jarak_meter: r.jarak_meter || 0,
+            dalam_radius: Boolean(r.dalam_radius),
+          },
+          id_shift: r.id_shift,
+          nama_shift: r.nama_shift,
+          status_ketepatan: r.status_ketepatan,
+          keterangan: r.keterangan,
+          status_persetujuan_dudi: r.status_persetujuan_dudi,
+          catatan_dudi: r.catatan_dudi,
+          disetujui_dudi_pada: r.disetujui_dudi_pada,
+          nama_pembimbing_dudi: r.nama_pembimbing_dudi,
+        }));
+        return res.json(formatted);
+      }
+    } catch (err) {
+      console.warn("Query presensi MySQL gagal, membaca db.json lokal:", err);
+    }
   }
+
+  const localDb = readLocalDb();
+  res.json(localDb.presensi || []);
 });
 
 app.post("/api/presensi", async (req, res) => {
-  const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
   try {
     const p = req.body;
-    const query = `
-      INSERT INTO presensi (
-        id_presensi, id_siswa, tanggal, hari, jam_masuk, jam_pulang, status,
-        foto_selfie, drive_file_id, drive_view_url, latitude, longitude, jarak_meter, dalam_radius,
-        id_shift, nama_shift, status_ketepatan, keterangan,
-        status_persetujuan_dudi, catatan_dudi, disetujui_dudi_pada, nama_pembimbing_dudi
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        jam_pulang = VALUES(jam_pulang),
-        status = VALUES(status),
-        foto_selfie = VALUES(foto_selfie),
-        drive_file_id = VALUES(drive_file_id),
-        drive_view_url = VALUES(drive_view_url),
-        status_ketepatan = VALUES(status_ketepatan),
-        keterangan = VALUES(keterangan),
-        status_persetujuan_dudi = VALUES(status_persetujuan_dudi),
-        catatan_dudi = VALUES(catatan_dudi),
-        disetujui_dudi_pada = VALUES(disetujui_dudi_pada),
-        nama_pembimbing_dudi = VALUES(nama_pembimbing_dudi)
-    `;
+    if (!p.id_presensi || !p.id_siswa || !p.tanggal) {
+      return res.status(400).json({ error: "id_presensi, id_siswa, dan tanggal wajib diisi." });
+    }
 
-    await db.execute(query, [
-      p.id_presensi,
-      p.id_siswa,
-      p.tanggal,
-      p.hari || "",
-      p.jam_masuk,
-      p.jam_pulang || null,
-      p.status,
-      p.foto_selfie || "",
-      p.drive_file_id || null,
-      p.drive_view_url || null,
-      p.koordinat_absen?.latitude || 0,
-      p.koordinat_absen?.longitude || 0,
-      p.koordinat_absen?.jarak_meter || 0,
-      p.koordinat_absen?.dalam_radius ? 1 : 0,
-      p.id_shift || null,
-      p.nama_shift || null,
-      p.status_ketepatan || null,
-      p.keterangan || null,
-      p.status_persetujuan_dudi || "Menunggu",
-      p.catatan_dudi || null,
-      p.disetujui_dudi_pada || null,
-      p.nama_pembimbing_dudi || null,
-    ]);
+    // 1. Simpan foto selfie ke disk server jika berupa base64
+    let driveViewUrl = p.drive_view_url;
+    if (p.foto_selfie && typeof p.foto_selfie === "string" && p.foto_selfie.startsWith("data:image")) {
+      const savedPhoto = saveBase64ImageToDisk(p.foto_selfie, p.id_presensi, "selfie");
+      if (savedPhoto && !driveViewUrl) {
+        driveViewUrl = savedPhoto.localUrl;
+      }
+    }
 
-    res.json({ success: true, message: "Data presensi berhasil disimpan ke MySQL" });
+    const payloadWithDrive: any = {
+      ...p,
+      drive_view_url: driveViewUrl || p.drive_view_url || null,
+    };
+
+    // 2. Simpan ke database disk lokal server
+    const localDb = readLocalDb();
+    const existingIdx = localDb.presensi.findIndex((x) => x.id_presensi === p.id_presensi);
+    if (existingIdx >= 0) {
+      localDb.presensi[existingIdx] = payloadWithDrive;
+    } else {
+      localDb.presensi.unshift(payloadWithDrive);
+    }
+    writeLocalDb({ presensi: localDb.presensi });
+
+    // 3. Simpan ke MySQL / TiDB jika terhubung
+    const db = getDbPool();
+    if (db) {
+      try {
+        const query = `
+          INSERT INTO presensi (
+            id_presensi, id_siswa, tanggal, hari, jam_masuk, jam_pulang, status,
+            foto_selfie, drive_file_id, drive_view_url, latitude, longitude, jarak_meter, dalam_radius,
+            id_shift, nama_shift, status_ketepatan, keterangan,
+            status_persetujuan_dudi, catatan_dudi, disetujui_dudi_pada, nama_pembimbing_dudi
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            jam_pulang = VALUES(jam_pulang),
+            status = VALUES(status),
+            foto_selfie = VALUES(foto_selfie),
+            drive_file_id = VALUES(drive_file_id),
+            drive_view_url = VALUES(drive_view_url),
+            status_ketepatan = VALUES(status_ketepatan),
+            keterangan = VALUES(keterangan),
+            status_persetujuan_dudi = VALUES(status_persetujuan_dudi),
+            catatan_dudi = VALUES(catatan_dudi),
+            disetujui_dudi_pada = VALUES(disetujui_dudi_pada),
+            nama_pembimbing_dudi = VALUES(nama_pembimbing_dudi)
+        `;
+
+        await db.execute(query, [
+          p.id_presensi,
+          p.id_siswa,
+          p.tanggal,
+          p.hari || "",
+          p.jam_masuk || "08:00",
+          p.jam_pulang || null,
+          p.status || "Hadir",
+          p.foto_selfie || "",
+          p.drive_file_id || null,
+          driveViewUrl || null,
+          p.koordinat_absen?.latitude || 0,
+          p.koordinat_absen?.longitude || 0,
+          p.koordinat_absen?.jarak_meter || 0,
+          p.koordinat_absen?.dalam_radius ? 1 : 0,
+          p.id_shift || null,
+          p.nama_shift || null,
+          p.status_ketepatan || null,
+          p.keterangan || null,
+          p.status_persetujuan_dudi || "Menunggu",
+          p.catatan_dudi || null,
+          p.disetujui_dudi_pada || null,
+          p.nama_pembimbing_dudi || null,
+        ]);
+      } catch (dbErr: any) {
+        console.warn("Gagal simpan presensi ke MySQL:", dbErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Data presensi & foto selfie berhasil disimpan ke database.",
+      driveViewUrl,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -742,171 +999,226 @@ app.post("/api/presensi", async (req, res) => {
 // 5. JURNAL: GET & POST
 app.get("/api/jurnal", async (req, res) => {
   const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
-  try {
-    const [rows]: any = await db.query("SELECT * FROM jurnal ORDER BY tanggal DESC");
-    const formatted = rows.map((r: any) => ({
-      id_jurnal: r.id_jurnal,
-      id_siswa: r.id_siswa,
-      tanggal: typeof r.tanggal === "string" ? r.tanggal.substring(0, 10) : new Date(r.tanggal).toISOString().substring(0, 10),
-      deskripsi_kegiatan: r.deskripsi_kegiatan,
-      kendala: r.kendala || "",
-      solusi: r.solusi || "",
-      status_validasi_guru: r.status_validasi_guru || "Menunggu",
-      catatan_guru: r.catatan_guru || "",
-      validated_at: r.validated_at || null,
-      nama_guru_penilai: r.nama_guru_penilai || "",
-      status_validasi_dudi: r.status_validasi_dudi || "Menunggu",
-      catatan_dudi: r.catatan_dudi || "",
-      validated_dudi_at: r.validated_dudi_at || null,
-      nama_dudi_penilai: r.nama_dudi_penilai || "",
-    }));
-    res.json(formatted);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  if (db) {
+    try {
+      const [rows]: any = await db.query("SELECT * FROM jurnal ORDER BY tanggal DESC");
+      if (rows && rows.length > 0) {
+        const formatted = rows.map((r: any) => ({
+          id_jurnal: r.id_jurnal,
+          id_siswa: r.id_siswa,
+          tanggal: typeof r.tanggal === "string" ? r.tanggal.substring(0, 10) : new Date(r.tanggal).toISOString().substring(0, 10),
+          deskripsi_kegiatan: r.deskripsi_kegiatan,
+          kendala: r.kendala || "",
+          solusi: r.solusi || "",
+          status_validasi_guru: r.status_validasi_guru || "Menunggu",
+          catatan_guru: r.catatan_guru || "",
+          validated_at: r.validated_at || null,
+          nama_guru_penilai: r.nama_guru_penilai || "",
+          status_validasi_dudi: r.status_validasi_dudi || "Menunggu",
+          catatan_dudi: r.catatan_dudi || "",
+          validated_dudi_at: r.validated_dudi_at || null,
+          nama_dudi_penilai: r.nama_dudi_penilai || "",
+        }));
+        return res.json(formatted);
+      }
+    } catch (err) {
+      console.warn("Query jurnal MySQL gagal, membaca db.json lokal:", err);
+    }
   }
+
+  const localDb = readLocalDb();
+  res.json(localDb.jurnal || []);
 });
 
 app.post("/api/jurnal", async (req, res) => {
-  const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
-  try {
-    const j = req.body;
-    const query = `
-      INSERT INTO jurnal (
-        id_jurnal, id_siswa, tanggal, deskripsi_kegiatan, kendala, solusi,
-        status_validasi_guru, catatan_guru, validated_at, nama_guru_penilai,
-        status_validasi_dudi, catatan_dudi, validated_dudi_at, nama_dudi_penilai
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        deskripsi_kegiatan = VALUES(deskripsi_kegiatan),
-        kendala = VALUES(kendala),
-        solusi = VALUES(solusi),
-        status_validasi_guru = VALUES(status_validasi_guru),
-        catatan_guru = VALUES(catatan_guru),
-        validated_at = VALUES(validated_at),
-        nama_guru_penilai = VALUES(nama_guru_penilai),
-        status_validasi_dudi = VALUES(status_validasi_dudi),
-        catatan_dudi = VALUES(catatan_dudi),
-        validated_dudi_at = VALUES(validated_dudi_at),
-        nama_dudi_penilai = VALUES(nama_dudi_penilai)
-    `;
-
-    await db.execute(query, [
-      j.id_jurnal,
-      j.id_siswa,
-      j.tanggal,
-      j.deskripsi_kegiatan,
-      j.kendala || "",
-      j.solusi || "",
-      j.status_validasi_guru || "Menunggu",
-      j.catatan_guru || null,
-      j.validated_at || null,
-      j.nama_guru_penilai || null,
-      j.status_validasi_dudi || "Menunggu",
-      j.catatan_dudi || null,
-      j.validated_dudi_at || null,
-      j.nama_dudi_penilai || null,
-    ]);
-
-    res.json({ success: true, message: "Data jurnal berhasil disimpan ke MySQL" });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  const j = req.body;
+  const localDb = readLocalDb();
+  const existingIdx = localDb.jurnal.findIndex((x) => x.id_jurnal === j.id_jurnal);
+  if (existingIdx >= 0) {
+    localDb.jurnal[existingIdx] = j;
+  } else {
+    localDb.jurnal.unshift(j);
   }
+  writeLocalDb({ jurnal: localDb.jurnal });
+
+  const db = getDbPool();
+  if (db) {
+    try {
+      const query = `
+        INSERT INTO jurnal (
+          id_jurnal, id_siswa, tanggal, deskripsi_kegiatan, kendala, solusi,
+          status_validasi_guru, catatan_guru, validated_at, nama_guru_penilai,
+          status_validasi_dudi, catatan_dudi, validated_dudi_at, nama_dudi_penilai
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          deskripsi_kegiatan = VALUES(deskripsi_kegiatan),
+          kendala = VALUES(kendala),
+          solusi = VALUES(solusi),
+          status_validasi_guru = VALUES(status_validasi_guru),
+          catatan_guru = VALUES(catatan_guru),
+          validated_at = VALUES(validated_at),
+          nama_guru_penilai = VALUES(nama_guru_penilai),
+          status_validasi_dudi = VALUES(status_validasi_dudi),
+          catatan_dudi = VALUES(catatan_dudi),
+          validated_dudi_at = VALUES(validated_dudi_at),
+          nama_dudi_penilai = VALUES(nama_dudi_penilai)
+      `;
+      await db.execute(query, [
+        j.id_jurnal,
+        j.id_siswa,
+        j.tanggal,
+        j.deskripsi_kegiatan || "",
+        j.kendala || "",
+        j.solusi || "",
+        j.status_validasi_guru || "Menunggu",
+        j.catatan_guru || null,
+        j.validated_at || null,
+        j.nama_guru_penilai || null,
+        j.status_validasi_dudi || "Menunggu",
+        j.catatan_dudi || null,
+        j.validated_dudi_at || null,
+        j.nama_dudi_penilai || null,
+      ]);
+    } catch (err: any) {
+      console.warn("Gagal simpan jurnal ke MySQL:", err.message);
+    }
+  }
+
+  res.json({ success: true, message: "Data jurnal berhasil disimpan." });
 });
 
-// 6. KUNJUNGAN GURU: GET & POST
+// 6. KUNJUNGAN GURU: GET & POST (Menyimpan Data Kunjungan & Foto Dokumentasi Guru)
 app.get("/api/kunjungan", async (req, res) => {
   const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
-  try {
-    const [rows]: any = await db.query("SELECT * FROM kunjungan ORDER BY tanggal DESC, jam_kunjungan DESC");
-    const formatted = rows.map((r: any) => ({
-      id_kunjungan: r.id_kunjungan,
-      id_guru: r.id_guru,
-      nama_guru: r.nama_guru,
-      id_dudi: r.id_dudi,
-      nama_dudi: r.nama_dudi,
-      tanggal: typeof r.tanggal === "string" ? r.tanggal.substring(0, 10) : new Date(r.tanggal).toISOString().substring(0, 10),
-      jam_kunjungan: r.jam_kunjungan || "",
-      tujuan_kunjungan: r.tujuan_kunjungan || "",
-      catatan_evaluasi: r.catatan_evaluasi || "",
-      foto_kunjungan: r.foto_kunjungan || "",
-      drive_file_id: r.drive_file_id || undefined,
-      drive_view_url: r.drive_view_url || undefined,
-      koordinat: {
-        latitude: parseFloat(r.latitude) || 0,
-        longitude: parseFloat(r.longitude) || 0,
-        jarak_meter: r.jarak_meter || 0,
-        dalam_radius: Boolean(r.dalam_radius),
-      },
-      siswa_dikunjungi: r.siswa_dikunjungi ? (typeof r.siswa_dikunjungi === "string" ? JSON.parse(r.siswa_dikunjungi) : r.siswa_dikunjungi) : [],
-      status_kunjungan: r.status_kunjungan || "Selesai",
-    }));
-    res.json(formatted);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  if (db) {
+    try {
+      const [rows]: any = await db.query("SELECT * FROM kunjungan ORDER BY tanggal DESC, jam_kunjungan DESC");
+      if (rows && rows.length > 0) {
+        const formatted = rows.map((r: any) => ({
+          id_kunjungan: r.id_kunjungan,
+          id_guru: r.id_guru,
+          nama_guru: r.nama_guru,
+          id_dudi: r.id_dudi,
+          nama_dudi: r.nama_dudi,
+          tanggal: typeof r.tanggal === "string" ? r.tanggal.substring(0, 10) : new Date(r.tanggal).toISOString().substring(0, 10),
+          jam_kunjungan: r.jam_kunjungan || "",
+          tujuan_kunjungan: r.tujuan_kunjungan || "",
+          catatan_evaluasi: r.catatan_evaluasi || "",
+          foto_kunjungan: r.foto_kunjungan || "",
+          drive_file_id: r.drive_file_id || undefined,
+          drive_view_url: r.drive_view_url || undefined,
+          koordinat: {
+            latitude: parseFloat(r.latitude) || 0,
+            longitude: parseFloat(r.longitude) || 0,
+            jarak_meter: r.jarak_meter || 0,
+            dalam_radius: Boolean(r.dalam_radius),
+          },
+          siswa_dikunjungi: r.siswa_dikunjungi ? (typeof r.siswa_dikunjungi === "string" ? JSON.parse(r.siswa_dikunjungi) : r.siswa_dikunjungi) : [],
+          status_kunjungan: r.status_kunjungan || "Selesai",
+        }));
+        return res.json(formatted);
+      }
+    } catch (err) {
+      console.warn("Query kunjungan MySQL gagal, membaca db.json lokal:", err);
+    }
   }
+
+  const localDb = readLocalDb();
+  res.json(localDb.kunjungan || []);
 });
 
 app.post("/api/kunjungan", async (req, res) => {
-  const db = getDbPool();
-  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
-
   try {
     const k = req.body;
-    const query = `
-      INSERT INTO kunjungan (
-        id_kunjungan, id_guru, nama_guru, id_dudi, nama_dudi,
-        tanggal, jam_kunjungan, tujuan_kunjungan, catatan_evaluasi,
-        foto_kunjungan, drive_file_id, drive_view_url,
-        latitude, longitude, jarak_meter, dalam_radius,
-        siswa_dikunjungi, status_kunjungan
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        nama_guru = VALUES(nama_guru),
-        id_dudi = VALUES(id_dudi),
-        nama_dudi = VALUES(nama_dudi),
-        tanggal = VALUES(tanggal),
-        jam_kunjungan = VALUES(jam_kunjungan),
-        tujuan_kunjungan = VALUES(tujuan_kunjungan),
-        catatan_evaluasi = VALUES(catatan_evaluasi),
-        foto_kunjungan = VALUES(foto_kunjungan),
-        drive_file_id = VALUES(drive_file_id),
-        drive_view_url = VALUES(drive_view_url),
-        latitude = VALUES(latitude),
-        longitude = VALUES(longitude),
-        jarak_meter = VALUES(jarak_meter),
-        dalam_radius = VALUES(dalam_radius),
-        siswa_dikunjungi = VALUES(siswa_dikunjungi),
-        status_kunjungan = VALUES(status_kunjungan)
-    `;
+    if (!k.id_kunjungan || !k.id_guru || !k.tanggal) {
+      return res.status(400).json({ error: "id_kunjungan, id_guru, dan tanggal wajib diisi." });
+    }
 
-    await db.execute(query, [
-      k.id_kunjungan,
-      k.id_guru,
-      k.nama_guru,
-      k.id_dudi,
-      k.nama_dudi,
-      k.tanggal,
-      k.jam_kunjungan,
-      k.tujuan_kunjungan,
-      k.catatan_evaluasi,
-      k.foto_kunjungan || "",
-      k.drive_file_id || null,
-      k.drive_view_url || null,
-      k.koordinat?.latitude || 0,
-      k.koordinat?.longitude || 0,
-      k.koordinat?.jarak_meter || 0,
-      k.koordinat?.dalam_radius ? 1 : 0,
-      JSON.stringify(k.siswa_dikunjungi || []),
-      k.status_kunjungan || "Selesai",
-    ]);
+    // 1. Simpan foto bukti supervisi ke disk server jika berupa base64
+    let driveViewUrl = k.drive_view_url;
+    if (k.foto_kunjungan && typeof k.foto_kunjungan === "string" && k.foto_kunjungan.startsWith("data:image")) {
+      const savedPhoto = saveBase64ImageToDisk(k.foto_kunjungan, k.id_kunjungan, "kunjungan");
+      if (savedPhoto && !driveViewUrl) {
+        driveViewUrl = savedPhoto.localUrl;
+      }
+    }
 
-    res.json({ success: true, message: "Data kunjungan guru berhasil disimpan ke MySQL" });
+    const payloadWithDrive: any = {
+      ...k,
+      drive_view_url: driveViewUrl || k.drive_view_url || null,
+    };
+
+    // 2. Simpan ke database disk lokal server
+    const localDb = readLocalDb();
+    const existingIdx = localDb.kunjungan.findIndex((x) => x.id_kunjungan === k.id_kunjungan);
+    if (existingIdx >= 0) {
+      localDb.kunjungan[existingIdx] = payloadWithDrive;
+    } else {
+      localDb.kunjungan.unshift(payloadWithDrive);
+    }
+    writeLocalDb({ kunjungan: localDb.kunjungan });
+
+    // 3. Simpan ke MySQL jika terhubung
+    const db = getDbPool();
+    if (db) {
+      try {
+        const query = `
+          INSERT INTO kunjungan (
+            id_kunjungan, id_guru, nama_guru, id_dudi, nama_dudi,
+            tanggal, jam_kunjungan, tujuan_kunjungan, catatan_evaluasi,
+            foto_kunjungan, drive_file_id, drive_view_url,
+            latitude, longitude, jarak_meter, dalam_radius,
+            siswa_dikunjungi, status_kunjungan
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            nama_guru = VALUES(nama_guru),
+            id_dudi = VALUES(id_dudi),
+            nama_dudi = VALUES(nama_dudi),
+            tanggal = VALUES(tanggal),
+            jam_kunjungan = VALUES(jam_kunjungan),
+            tujuan_kunjungan = VALUES(tujuan_kunjungan),
+            catatan_evaluasi = VALUES(catatan_evaluasi),
+            foto_kunjungan = VALUES(foto_kunjungan),
+            drive_file_id = VALUES(drive_file_id),
+            drive_view_url = VALUES(drive_view_url),
+            latitude = VALUES(latitude),
+            longitude = VALUES(longitude),
+            jarak_meter = VALUES(jarak_meter),
+            dalam_radius = VALUES(dalam_radius),
+            siswa_dikunjungi = VALUES(siswa_dikunjungi),
+            status_kunjungan = VALUES(status_kunjungan)
+        `;
+
+        await db.execute(query, [
+          k.id_kunjungan,
+          k.id_guru,
+          k.nama_guru,
+          k.id_dudi,
+          k.nama_dudi,
+          k.tanggal,
+          k.jam_kunjungan,
+          k.tujuan_kunjungan,
+          k.catatan_evaluasi,
+          k.foto_kunjungan || "",
+          k.drive_file_id || null,
+          driveViewUrl || null,
+          k.koordinat?.latitude || 0,
+          k.koordinat?.longitude || 0,
+          k.koordinat?.jarak_meter || 0,
+          k.koordinat?.dalam_radius ? 1 : 0,
+          JSON.stringify(k.siswa_dikunjungi || []),
+          k.status_kunjungan || "Selesai",
+        ]);
+      } catch (dbErr: any) {
+        console.warn("Gagal simpan kunjungan ke MySQL:", dbErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Data kunjungan guru & foto bukti berhasil disimpan ke database.",
+      driveViewUrl,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
