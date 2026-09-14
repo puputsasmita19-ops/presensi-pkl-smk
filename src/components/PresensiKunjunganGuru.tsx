@@ -24,6 +24,7 @@ import {
   RefreshCw,
   ZoomIn,
   Zap,
+  Cloud,
 } from 'lucide-react';
 import { User, DUDI, Siswa, Presensi, KunjunganGuru } from '../types';
 import { calculateDistanceMeters, formatDistance } from '../utils/geo';
@@ -41,7 +42,7 @@ interface PresensiKunjunganGuruProps {
   siswaList: Siswa[];
   presensiList: Presensi[];
   kunjunganList: KunjunganGuru[];
-  onSaveKunjungan: (kunjungan: KunjunganGuru) => void;
+  onSaveKunjungan: (kunjungan: KunjunganGuru) => Promise<void> | void;
   onSelectSiswaDetail?: (siswa: Siswa) => void;
 }
 
@@ -105,8 +106,10 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
     ratioPercent: number;
   } | null>(null);
   const [isCompressing, setIsCompressing] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isSimulatedAtOffice, setIsSimulatedAtOffice] = useState<boolean>(true);
   const [previewModalImage, setPreviewModalImage] = useState<string | null>(null);
+  const [previewModalItem, setPreviewModalItem] = useState<KunjunganGuru | null>(null);
 
   // Tanggal & waktu untuk pencatatan kunjungan (tanpa interval jam redundant)
   const todayStr = new Date().toISOString().split('T')[0];
@@ -406,7 +409,7 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
   };
 
   // Submit Handler
-  const handleSubmitKunjungan = (e: React.FormEvent) => {
+  const handleSubmitKunjungan = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isWithinRadius) {
@@ -451,15 +454,23 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
       status_kunjungan: 'Selesai',
     };
 
-    onSaveKunjungan(newKunjungan);
-    alert(
-      `Presensi kunjungan guru ke ${activeDudi.nama_instansi} berhasil dicatat pada ${newKunjungan.jam_kunjungan} WIB! Data tersimpan di riwayat supervisi.`
-    );
+    setIsSubmitting(true);
+    try {
+      await onSaveKunjungan(newKunjungan);
+      alert(
+        `Presensi kunjungan guru ke ${activeDudi.nama_instansi} berhasil dicatat pada ${newKunjungan.jam_kunjungan} WIB! Foto supervisi & data telah diproses ke Google Drive & Database.`
+      );
 
-    // Reset form
-    setCatatanEvaluasi('');
-    setCapturedPhoto(null);
-    setSubTab('riwayat');
+      // Reset form
+      setCatatanEvaluasi('');
+      setCapturedPhoto(null);
+      setCompressionStats(null);
+      setSubTab('riwayat');
+    } catch (err: any) {
+      alert(`Gagal memproses presensi kunjungan: ${err?.message || 'Terjadi kesalahan'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const toggleStudentSelection = (nama: string) => {
@@ -1004,10 +1015,29 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
           <button
             type="submit"
             id="btn-submit-kunjungan-guru"
-            className="w-full min-h-[48px] py-3 px-4 rounded-xl bg-slate-900 dark:bg-sky-600 text-sky-400 dark:text-white hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-98 shadow-md cursor-pointer"
+            disabled={isSubmitting || isCompressing}
+            className={`w-full min-h-[48px] py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer ${
+              isSubmitting || isCompressing
+                ? 'bg-slate-400 text-white cursor-not-allowed'
+                : 'bg-slate-900 dark:bg-sky-600 text-sky-400 dark:text-white hover:bg-slate-800 dark:hover:bg-sky-500 active:scale-98'
+            }`}
           >
-            <Send className="w-4 h-4" />
-            <span>Kirim Presensi Kunjungan Guru ({activeDudi?.nama_instansi || 'DUDI'})</span>
+            {isSubmitting ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Menyimpan & Mengunggah ke Google Drive...</span>
+              </>
+            ) : isCompressing ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Mengompresi Foto...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                <span>Kirim Presensi Kunjungan Guru ({activeDudi?.nama_instansi || 'DUDI'})</span>
+              </>
+            )}
           </button>
         </form>
       )}
@@ -1019,7 +1049,7 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
             <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
               Logbook Kunjungan Guru di DUDI ({kunjunganList.length})
             </h3>
-            <span className="text-[11px] text-slate-400">Bukti supervisi terverifikasi</span>
+            <span className="text-[11px] text-slate-400">Bukti supervisi terverifikasi & Google Drive</span>
           </div>
 
           {kunjunganList.length === 0 ? (
@@ -1047,10 +1077,18 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
                       </span>
                     </div>
                   </div>
-                  <span className="px-2.5 py-1 text-[10px] font-bold rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>Selesai</span>
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {k.drive_view_url && (
+                      <span className="px-2 py-0.5 text-[9px] font-bold rounded-md bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex items-center gap-1">
+                        <Cloud className="w-2.5 h-2.5 text-sky-500" />
+                        <span>Google Drive</span>
+                      </span>
+                    )}
+                    <span className="px-2.5 py-1 text-[10px] font-bold rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Selesai</span>
+                    </span>
+                  </div>
                 </div>
 
                 {/* Tujuan */}
@@ -1071,7 +1109,7 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
                   </p>
                 </div>
 
-                {/* Siswa Dikunjungi & Foto Thumbnail */}
+                {/* Siswa Dikunjungi & Foto Thumbnail / Link Drive */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="text-[11px] text-slate-600 dark:text-slate-400">
                     <span className="font-bold block text-[10px] text-slate-400 uppercase mb-1">
@@ -1089,23 +1127,41 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
                     </div>
                   </div>
 
-                  {k.foto_kunjungan && (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewModalImage(k.foto_kunjungan)}
-                      className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer self-start sm:self-auto shrink-0"
-                    >
-                      <img
-                        src={k.foto_kunjungan}
-                        alt="Bukti"
-                        className="w-10 h-10 rounded-lg object-cover border border-slate-300 dark:border-slate-700"
-                      />
-                      <div className="text-left text-[10px] pr-2">
-                        <span className="font-bold block text-slate-800 dark:text-slate-200">Foto Bukti</span>
-                        <span className="text-sky-600 dark:text-sky-400">Klik perbesar</span>
-                      </div>
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+                    {k.foto_kunjungan && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewModalImage(k.foto_kunjungan || null);
+                          setPreviewModalItem(k);
+                        }}
+                        className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                      >
+                        <img
+                          src={k.foto_kunjungan}
+                          alt="Bukti"
+                          className="w-10 h-10 rounded-lg object-cover border border-slate-300 dark:border-slate-700"
+                        />
+                        <div className="text-left text-[10px] pr-2">
+                          <span className="font-bold block text-slate-800 dark:text-slate-200">Foto Bukti</span>
+                          <span className="text-sky-600 dark:text-sky-400">Klik perbesar</span>
+                        </div>
+                      </button>
+                    )}
+
+                    {k.drive_view_url && (
+                      <a
+                        href={k.drive_view_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900 transition shadow-xs"
+                      >
+                        <Cloud className="w-3.5 h-3.5 text-sky-500" />
+                        <span>Lihat di Google Drive</span>
+                        <ExternalLink className="w-3 h-3 ml-0.5" />
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
@@ -1200,7 +1256,10 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
               </h4>
               <button
                 type="button"
-                onClick={() => setPreviewModalImage(null)}
+                onClick={() => {
+                  setPreviewModalImage(null);
+                  setPreviewModalItem(null);
+                }}
                 className="p-1 text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1213,13 +1272,32 @@ export const PresensiKunjunganGuru: React.FC<PresensiKunjunganGuruProps> = ({
                 className="max-h-[70vh] w-auto object-contain"
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setPreviewModalImage(null)}
-              className="w-full py-2 bg-slate-800 text-slate-200 font-bold text-xs rounded-xl hover:bg-slate-700 cursor-pointer"
-            >
-              Tutup
-            </button>
+            <div className="flex gap-2">
+              {previewModalItem?.drive_view_url && (
+                <a
+                  href={previewModalItem.drive_view_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 py-2 px-3 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition text-center"
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>Buka Berkas di Google Drive</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewModalImage(null);
+                  setPreviewModalItem(null);
+                }}
+                className={`py-2 bg-slate-800 text-slate-200 font-bold text-xs rounded-xl hover:bg-slate-700 cursor-pointer ${
+                  previewModalItem?.drive_view_url ? 'px-4' : 'w-full'
+                }`}
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

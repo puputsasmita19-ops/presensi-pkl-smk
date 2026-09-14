@@ -1,7 +1,7 @@
-import { Presensi } from '../types';
+import { Presensi, KunjunganGuru } from '../types';
 import { getCachedAccessToken } from './googleAuth';
 import { uploadFileToDrive, getOrCreatePklFolder } from './googleDrive';
-import { savePresensiToDb } from '../utils/apiService';
+import { savePresensiToDb, saveKunjunganToDb } from '../utils/apiService';
 import { saveToOfflineQueue, removeFromOfflineQueue } from './offlinePresensiService';
 
 export interface StorageExecutionReport {
@@ -173,3 +173,111 @@ export async function executeUnifiedPresensiSave(
   report.success = true;
   return { presensi: workingPresensi, report };
 }
+
+/**
+ * Mengunggah foto bukti kunjungan/supervisi guru ke Google Drive menggunakan OAuth Client ID
+ */
+export async function uploadKunjunganPhotoToDrive(
+  kunjungan: KunjunganGuru
+): Promise<{ driveUrl?: string; driveFileId?: string; method: 'oauth' | 'none' }> {
+  // Hanya proses jika ada foto dan valid (data URI base64)
+  if (!kunjungan.foto_kunjungan || !kunjungan.foto_kunjungan.startsWith('data:image')) {
+    return { method: 'none' };
+  }
+
+  const cleanTeacherName = (kunjungan.nama_guru || 'Guru').replace(/[^a-zA-Z0-9]/g, '_');
+  const cleanDudi = (kunjungan.nama_dudi || 'DUDI').replace(/[^a-zA-Z0-9]/g, '_');
+  const fileName = `KunjunganGuru_${kunjungan.tanggal}_${cleanTeacherName}_${cleanDudi}_${kunjungan.id_kunjungan}.jpg`;
+
+  // Unggah ke Google Drive via OAuth Client ID
+  const oauthToken = getCachedAccessToken();
+  if (oauthToken) {
+    try {
+      const folderId = await getOrCreatePklFolder();
+      const base64Data = kunjungan.foto_kunjungan.split(',')[1] || kunjungan.foto_kunjungan;
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+      const uploaded = await uploadFileToDrive(fileName, blob, 'image/jpeg', folderId);
+      return {
+        driveUrl: uploaded.webViewLink,
+        driveFileId: uploaded.id,
+        method: 'oauth',
+      };
+    } catch (oauthErr: any) {
+      console.warn('Gagal unggah foto kunjungan guru ke Google Drive via OAuth:', oauthErr.message);
+    }
+  }
+
+  return { method: 'none' };
+}
+
+/**
+ * Pipeline Penyimpanan Terpadu Presensi Kunjungan Guru:
+ * 1. Upload foto bukti ke Google Drive jika terhubung (OAuth)
+ * 2. Sematkan link Google Drive ke data kunjungan guru
+ * 3. Simpan data kunjungan ke MySQL / TiDB Cloud (jika terkonfigurasi)
+ */
+export async function executeUnifiedKunjunganSave(
+  kunjungan: KunjunganGuru
+): Promise<{ kunjungan: KunjunganGuru; report: StorageExecutionReport }> {
+  const isDeviceOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  const report: StorageExecutionReport = {
+    success: false,
+    driveSuccess: false,
+    driveMethod: 'none',
+    databaseSuccess: false,
+    databaseDestination: 'offline_local',
+    isOffline: !isDeviceOnline,
+    errorMessages: [],
+  };
+
+  let workingKunjungan: KunjunganGuru = { ...kunjungan };
+
+  // LANGKAH 1: Unggah ke Google Drive jika terhubung
+  if (isDeviceOnline) {
+    try {
+      const driveRes = await uploadKunjunganPhotoToDrive(workingKunjungan);
+      if (driveRes.driveUrl || driveRes.driveFileId) {
+        report.driveSuccess = true;
+        report.driveUrl = driveRes.driveUrl;
+        report.driveFileId = driveRes.driveFileId;
+        report.driveMethod = driveRes.method;
+
+        workingKunjungan = {
+          ...workingKunjungan,
+          drive_file_id: driveRes.driveFileId,
+          drive_view_url: driveRes.driveUrl,
+        };
+      }
+    } catch (err: any) {
+      report.errorMessages.push(`Google Drive (Foto Guru): ${err?.message || 'Gagal unggah foto'}`);
+    }
+  }
+
+  // LANGKAH 2: Simpan ke Database MySQL / TiDB
+  if (isDeviceOnline) {
+    try {
+      const dbSuccess = await saveKunjunganToDb(workingKunjungan);
+      if (dbSuccess) {
+        report.databaseSuccess = true;
+        report.databaseDestination = 'tidb_mysql';
+        workingKunjungan = {
+          ...workingKunjungan,
+          synced_to_db: true,
+        };
+      }
+    } catch (dbErr: any) {
+      report.errorMessages.push(`Database MySQL/TiDB: ${dbErr?.message || 'Koneksi database terganggu'}`);
+    }
+  }
+
+  report.success = true;
+  return { kunjungan: workingKunjungan, report };
+}
+

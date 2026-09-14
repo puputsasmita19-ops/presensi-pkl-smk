@@ -154,6 +154,9 @@ export interface KunjunganGuru {
   };
   siswa_dikunjungi: string[];
   status_kunjungan: 'Selesai' | 'Berlangsung';
+  drive_file_id?: string;
+  drive_view_url?: string;
+  synced_to_db?: boolean;
 }
 
 export interface FonnteConfig {

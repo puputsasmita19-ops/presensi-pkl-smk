@@ -1,5 +1,5 @@
 // Layanan integrasi API MySQL Online
-import { Siswa, DUDI, Presensi, JurnalHarian } from '../types';
+import { Siswa, DUDI, Presensi, JurnalHarian, KunjunganGuru } from '../types';
 
 export interface DbStatusResponse {
   connected: boolean;
@@ -44,6 +44,7 @@ export interface SyncAllPayload {
   dudi: DUDI[];
   presensi: Presensi[];
   jurnal: JurnalHarian[];
+  kunjungan?: KunjunganGuru[];
 }
 
 export interface SyncAllResult {
@@ -54,6 +55,7 @@ export interface SyncAllResult {
     dudi: number;
     presensi: number;
     jurnal: number;
+    kunjungan?: number;
   };
 }
 
@@ -186,3 +188,28 @@ export const saveJurnalToDb = async (jurnal: JurnalHarian): Promise<boolean> => 
     return false;
   }
 };
+
+// KUNJUNGAN GURU
+export const fetchKunjunganFromDb = async (): Promise<KunjunganGuru[] | null> => {
+  try {
+    const res = await fetch('/api/kunjungan');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+};
+
+export const saveKunjunganToDb = async (kunjungan: KunjunganGuru): Promise<boolean> => {
+  try {
+    const res = await fetch('/api/kunjungan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(kunjungan),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+};
+

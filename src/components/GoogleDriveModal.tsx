@@ -23,7 +23,7 @@ import {
   setSavedCompressionPreset,
   COMPRESSION_PRESETS,
 } from '../utils/imageCompressor';
-import { Presensi, JurnalHarian, Siswa, DUDI } from '../types';
+import { Presensi, JurnalHarian, Siswa, DUDI, KunjunganGuru } from '../types';
 import {
   Cloud,
   CheckCircle2,
@@ -52,6 +52,7 @@ interface GoogleDriveModalProps {
   jurnalList: JurnalHarian[];
   siswaList: Siswa[];
   dudiList: DUDI[];
+  kunjunganList?: KunjunganGuru[];
   onConnectionChange?: (connected: boolean) => void;
 }
 
@@ -62,6 +63,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   jurnalList,
   siswaList,
   dudiList,
+  kunjunganList = [],
   onConnectionChange,
 }) => {
   const [isOAuthConnected, setIsOAuthConnected] = useState<boolean>(false);
@@ -187,11 +189,13 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
           totalJurnal: jurnalList.length,
           totalSiswa: siswaList.length,
           totalDudi: dudiList.length,
+          totalKunjungan: kunjunganList.length,
         },
         presensi: presensiList,
         jurnal: jurnalList,
         siswa: siswaList,
         dudi: dudiList,
+        kunjungan: kunjunganList,
       };
       const dateStr = new Date().toISOString().split('T')[0];
       const fileName = `Backup_Data_PKL_${dateStr}.json`;
@@ -233,11 +237,13 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         totalJurnal: jurnalList.length,
         totalSiswa: siswaList.length,
         totalDudi: dudiList.length,
+        totalKunjungan: kunjunganList.length,
       },
       presensi: presensiList,
       jurnal: jurnalList,
       siswa: siswaList,
       dudi: dudiList,
+      kunjungan: kunjunganList,
     };
 
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));

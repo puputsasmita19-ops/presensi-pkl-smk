@@ -57,7 +57,7 @@ import {
   savePresensiToDatabase,
   syncOfflinePresensiToDatabase,
 } from './services/offlinePresensiService';
-import { executeUnifiedPresensiSave } from './services/unifiedStorageService';
+import { executeUnifiedPresensiSave, executeUnifiedKunjunganSave } from './services/unifiedStorageService';
 import { getInitialTheme, applyTheme } from './utils/theme';
 import {
   fetchSiswaFromDb,
@@ -69,6 +69,8 @@ import {
   savePresensiToDb,
   fetchJurnalFromDb,
   saveJurnalToDb,
+  fetchKunjunganFromDb,
+  saveKunjunganToDb,
   checkDbConnection,
   DbStatusResponse,
 } from './utils/apiService';
@@ -347,11 +349,12 @@ export default function App() {
     let isMounted = true;
     const loadFromDatabase = async () => {
       try {
-        const [dbSiswa, dbDudi, dbPresensi, dbJurnal] = await Promise.all([
+        const [dbSiswa, dbDudi, dbPresensi, dbJurnal, dbKunjungan] = await Promise.all([
           fetchSiswaFromDb(),
           fetchDudiFromDb(),
           fetchPresensiFromDb(),
           fetchJurnalFromDb(),
+          fetchKunjunganFromDb(),
         ]);
 
         if (!isMounted) return;
@@ -367,6 +370,9 @@ export default function App() {
         }
         if (dbJurnal && dbJurnal.length > 0) {
           setJurnalList(dbJurnal);
+        }
+        if (dbKunjungan && dbKunjungan.length > 0) {
+          setKunjunganGuruList(dbKunjungan);
         }
       } catch (err) {
         console.info('Penyimpanan lokal aktif (MySQL online standby).');
@@ -691,15 +697,36 @@ export default function App() {
     );
   };
 
-  // Kunjungan Guru Handler
-  const handleSaveKunjunganGuru = (kunjungan: KunjunganGuru) => {
-    setKunjunganGuruList((prev) => [kunjungan, ...prev]);
+  // Kunjungan Guru Handler: Menyimpan ke Google Drive (foto supervisi) & Database MySQL
+  const handleSaveKunjunganGuru = async (kunjungan: KunjunganGuru) => {
+    // Eksekusi Pipeline Penyimpanan Terpadu Kunjungan Guru (Google Drive OAuth -> MySQL/TiDB -> State)
+    const { kunjungan: savedKunjungan, report } = await executeUnifiedKunjunganSave(kunjungan);
+
+    setKunjunganGuruList((prev) => {
+      const existingIdx = prev.findIndex((k) => k.id_kunjungan === savedKunjungan.id_kunjungan);
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = savedKunjungan;
+        return next;
+      }
+      return [savedKunjungan, ...prev];
+    });
+
+    let logDetail = `Guru ${savedKunjungan.nama_guru} mencatat presensi kunjungan supervisi ke ${savedKunjungan.nama_dudi} (${savedKunjungan.jam_kunjungan} WIB).`;
+    if (report.driveSuccess) {
+      logDetail += ' Foto bukti supervisi tersimpan di Google Drive.';
+    }
+    if (report.databaseSuccess) {
+      logDetail += ' Data tercatat di database MySQL.';
+    }
+
     addLog(
       'Presensi',
       'Presensi Kunjungan Guru DUDI',
-      `Guru ${kunjungan.nama_guru} mencatat presensi kunjungan supervisi ke ${kunjungan.nama_dudi} (${kunjungan.jam_kunjungan} WIB).`,
+      logDetail,
       'Sukses',
-      currentUser
+      currentUser,
+      report.driveSuccess ? 'Drive + Database' : 'Database/Lokal'
     );
   };
 
@@ -1060,6 +1087,7 @@ export default function App() {
           jurnalList={jurnalList}
           siswaList={siswaList}
           dudiList={dudiList}
+          kunjunganList={kunjunganGuruList}
           onConnectionChange={(connected) => setIsGoogleConnected(connected)}
         />
       )}

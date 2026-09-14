@@ -178,6 +178,39 @@ async function initTablesIfConnected() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // Tabel Kunjungan Guru
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS kunjungan (
+        id_kunjungan VARCHAR(100) PRIMARY KEY,
+        id_guru VARCHAR(100) NOT NULL,
+        nama_guru VARCHAR(255) NOT NULL,
+        id_dudi VARCHAR(100) NOT NULL,
+        nama_dudi VARCHAR(255) NOT NULL,
+        tanggal DATE NOT NULL,
+        jam_kunjungan TIME NOT NULL,
+        tujuan_kunjungan TEXT NOT NULL,
+        catatan_evaluasi LONGTEXT NOT NULL,
+        foto_kunjungan LONGTEXT,
+        drive_file_id VARCHAR(255),
+        drive_view_url TEXT,
+        latitude DECIMAL(10, 8),
+        longitude DECIMAL(11, 8),
+        jarak_meter INT,
+        dalam_radius TINYINT(1) DEFAULT 1,
+        siswa_dikunjungi JSON,
+        status_kunjungan VARCHAR(50) DEFAULT 'Selesai',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Pastikan kolom Google Drive ada di kunjungan jika tabel sudah ada
+    try {
+      await db.query(`ALTER TABLE kunjungan ADD COLUMN drive_file_id VARCHAR(255) AFTER foto_kunjungan`);
+    } catch {}
+    try {
+      await db.query(`ALTER TABLE kunjungan ADD COLUMN drive_view_url TEXT AFTER drive_file_id`);
+    } catch {}
+
     console.log("Status MySQL: Tabel database PKL siap & terverifikasi.");
   } catch (e: any) {
     console.error("Gagal inisialisasi tabel MySQL:", e.message);
@@ -777,6 +810,102 @@ app.post("/api/jurnal", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// 6. KUNJUNGAN GURU: GET & POST
+app.get("/api/kunjungan", async (req, res) => {
+  const db = getDbPool();
+  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
+
+  try {
+    const [rows]: any = await db.query("SELECT * FROM kunjungan ORDER BY tanggal DESC, jam_kunjungan DESC");
+    const formatted = rows.map((r: any) => ({
+      id_kunjungan: r.id_kunjungan,
+      id_guru: r.id_guru,
+      nama_guru: r.nama_guru,
+      id_dudi: r.id_dudi,
+      nama_dudi: r.nama_dudi,
+      tanggal: typeof r.tanggal === "string" ? r.tanggal.substring(0, 10) : new Date(r.tanggal).toISOString().substring(0, 10),
+      jam_kunjungan: r.jam_kunjungan || "",
+      tujuan_kunjungan: r.tujuan_kunjungan || "",
+      catatan_evaluasi: r.catatan_evaluasi || "",
+      foto_kunjungan: r.foto_kunjungan || "",
+      drive_file_id: r.drive_file_id || undefined,
+      drive_view_url: r.drive_view_url || undefined,
+      koordinat: {
+        latitude: parseFloat(r.latitude) || 0,
+        longitude: parseFloat(r.longitude) || 0,
+        jarak_meter: r.jarak_meter || 0,
+        dalam_radius: Boolean(r.dalam_radius),
+      },
+      siswa_dikunjungi: r.siswa_dikunjungi ? (typeof r.siswa_dikunjungi === "string" ? JSON.parse(r.siswa_dikunjungi) : r.siswa_dikunjungi) : [],
+      status_kunjungan: r.status_kunjungan || "Selesai",
+    }));
+    res.json(formatted);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/kunjungan", async (req, res) => {
+  const db = getDbPool();
+  if (!db) return res.status(503).json({ error: "MySQL belum terhubung." });
+
+  try {
+    const k = req.body;
+    const query = `
+      INSERT INTO kunjungan (
+        id_kunjungan, id_guru, nama_guru, id_dudi, nama_dudi,
+        tanggal, jam_kunjungan, tujuan_kunjungan, catatan_evaluasi,
+        foto_kunjungan, drive_file_id, drive_view_url,
+        latitude, longitude, jarak_meter, dalam_radius,
+        siswa_dikunjungi, status_kunjungan
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        nama_guru = VALUES(nama_guru),
+        id_dudi = VALUES(id_dudi),
+        nama_dudi = VALUES(nama_dudi),
+        tanggal = VALUES(tanggal),
+        jam_kunjungan = VALUES(jam_kunjungan),
+        tujuan_kunjungan = VALUES(tujuan_kunjungan),
+        catatan_evaluasi = VALUES(catatan_evaluasi),
+        foto_kunjungan = VALUES(foto_kunjungan),
+        drive_file_id = VALUES(drive_file_id),
+        drive_view_url = VALUES(drive_view_url),
+        latitude = VALUES(latitude),
+        longitude = VALUES(longitude),
+        jarak_meter = VALUES(jarak_meter),
+        dalam_radius = VALUES(dalam_radius),
+        siswa_dikunjungi = VALUES(siswa_dikunjungi),
+        status_kunjungan = VALUES(status_kunjungan)
+    `;
+
+    await db.execute(query, [
+      k.id_kunjungan,
+      k.id_guru,
+      k.nama_guru,
+      k.id_dudi,
+      k.nama_dudi,
+      k.tanggal,
+      k.jam_kunjungan,
+      k.tujuan_kunjungan,
+      k.catatan_evaluasi,
+      k.foto_kunjungan || "",
+      k.drive_file_id || null,
+      k.drive_view_url || null,
+      k.koordinat?.latitude || 0,
+      k.koordinat?.longitude || 0,
+      k.koordinat?.jarak_meter || 0,
+      k.koordinat?.dalam_radius ? 1 : 0,
+      JSON.stringify(k.siswa_dikunjungi || []),
+      k.status_kunjungan || "Selesai",
+    ]);
+
+    res.json({ success: true, message: "Data kunjungan guru berhasil disimpan ke MySQL" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ---------------------- VITE & PRODUCTION SETUP ----------------------
 async function startServer() {
