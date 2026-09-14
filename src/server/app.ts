@@ -22,6 +22,7 @@ const DATA_DIR = isServerless
   : path.join(process.cwd(), "data");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const DB_FILE = path.join(DATA_DIR, "db.json");
+const CONFIG_FILE = path.join(DATA_DIR, "db-config.json");
 
 try {
   if (!fs.existsSync(DATA_DIR)) {
@@ -104,7 +105,7 @@ export function saveBase64ImageToDisk(
   }
 }
 
-// Ekstraksi konfigurasi database yang fleksibel (mendukung MYSQL_*, DB_*, dan DATABASE_URL)
+// Ekstraksi konfigurasi database yang fleksibel (mendukung MYSQL_*, DB_*, DATABASE_URL, dan Dynamic Runtime Config)
 export interface DbConfig {
   host: string;
   user: string;
@@ -115,8 +116,34 @@ export interface DbConfig {
   isTiDB: boolean;
 }
 
+// Runtime config memory
+let runtimeDbConfig: DbConfig | null = null;
+
+function loadSavedRuntimeConfig(): DbConfig | null {
+  if (runtimeDbConfig) return runtimeDbConfig;
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const raw = fs.readFileSync(CONFIG_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.host && parsed.user && parsed.database) {
+        runtimeDbConfig = parsed;
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Info config file:", e);
+  }
+  return null;
+}
+
 export function parseDbConfig(): DbConfig | null {
-  // 1. Cek DATABASE_URL jika ada (misal dari TiDB Cloud, Aiven, Railway, dsb.)
+  // 1. Cek runtime saved config terlebih dahulu
+  const runtime = loadSavedRuntimeConfig();
+  if (runtime) {
+    return runtime;
+  }
+
+  // 2. Cek DATABASE_URL jika ada (misal dari TiDB Cloud, Aiven, Railway, dsb.)
   if (process.env.DATABASE_URL) {
     try {
       const parsed = new URL(process.env.DATABASE_URL);
@@ -136,7 +163,7 @@ export function parseDbConfig(): DbConfig | null {
     }
   }
 
-  // 2. Mendukung variabel MYSQL_* dan DB_*
+  // 3. Mendukung variabel MYSQL_* dan DB_*
   const host = process.env.MYSQL_HOST || process.env.DB_HOST;
   const user = process.env.MYSQL_USER || process.env.DB_USER;
   const database =
@@ -218,9 +245,8 @@ export function getDbPool(): mysql.Pool | null {
 }
 
 // Inisialisasi tabel otomatis jika database terhubung
-export async function initTablesIfConnected() {
-  if (tablesInitialized) return;
-  const db = getDbPool();
+export async function initTablesIfConnected(customPool?: mysql.Pool | null) {
+  const db = customPool || getDbPool();
   if (!db) return;
 
   try {
@@ -307,22 +333,12 @@ export async function initTablesIfConnected() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // Migrasi kolom fleksibel presensi jika tabel sudah ada sebelumnya
-    try {
-      await db.query(`ALTER TABLE presensi MODIFY COLUMN jam_masuk VARCHAR(50) NULL`);
-    } catch {}
-    try {
-      await db.query(`ALTER TABLE presensi MODIFY COLUMN jam_pulang VARCHAR(50) NULL`);
-    } catch {}
-    try {
-      await db.query(`ALTER TABLE presensi ADD COLUMN drive_file_id VARCHAR(255) AFTER foto_selfie`);
-    } catch {}
-    try {
-      await db.query(`ALTER TABLE presensi ADD COLUMN drive_view_url TEXT AFTER drive_file_id`);
-    } catch {}
-    try {
-      await db.query(`ALTER TABLE presensi ADD COLUMN image_sync_status VARCHAR(50) DEFAULT 'synced' AFTER drive_view_url`);
-    } catch {}
+    // Migrasi kolom presensi
+    try { await db.query(`ALTER TABLE presensi MODIFY COLUMN jam_masuk VARCHAR(50) NULL`); } catch {}
+    try { await db.query(`ALTER TABLE presensi MODIFY COLUMN jam_pulang VARCHAR(50) NULL`); } catch {}
+    try { await db.query(`ALTER TABLE presensi ADD COLUMN drive_file_id VARCHAR(255) AFTER foto_selfie`); } catch {}
+    try { await db.query(`ALTER TABLE presensi ADD COLUMN drive_view_url TEXT AFTER drive_file_id`); } catch {}
+    try { await db.query(`ALTER TABLE presensi ADD COLUMN image_sync_status VARCHAR(50) DEFAULT 'synced' AFTER drive_view_url`); } catch {}
 
     // Tabel Jurnal Harian
     await db.query(`
@@ -385,15 +401,9 @@ export async function initTablesIfConnected() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    try {
-      await db.query(`ALTER TABLE kunjungan ADD COLUMN drive_file_id VARCHAR(255) AFTER foto_kunjungan`);
-    } catch {}
-    try {
-      await db.query(`ALTER TABLE kunjungan ADD COLUMN drive_view_url TEXT AFTER drive_file_id`);
-    } catch {}
-    try {
-      await db.query(`ALTER TABLE kunjungan ADD COLUMN image_sync_status VARCHAR(50) DEFAULT 'synced' AFTER drive_view_url`);
-    } catch {}
+    try { await db.query(`ALTER TABLE kunjungan ADD COLUMN drive_file_id VARCHAR(255) AFTER foto_kunjungan`); } catch {}
+    try { await db.query(`ALTER TABLE kunjungan ADD COLUMN drive_view_url TEXT AFTER drive_file_id`); } catch {}
+    try { await db.query(`ALTER TABLE kunjungan ADD COLUMN image_sync_status VARCHAR(50) DEFAULT 'synced' AFTER drive_view_url`); } catch {}
 
     tablesInitialized = true;
     console.log("Status MySQL: Tabel database PKL siap & terverifikasi.");
@@ -451,52 +461,41 @@ apiRouter.get("/db/status", async (req, res) => {
         siswa: localDb.siswa.length,
         dudi: localDb.dudi.length,
         presensi: localDb.presensi.length,
-        kunjungan: localDb.kunjungan.length,
         jurnal: localDb.jurnal.length,
+        kunjungan: localDb.kunjungan.length,
       },
-      message: "Menggunakan database lokal server (kredensial MySQL belum diatur di Environment Variables)",
-    });
-  }
-
-  const db = getDbPool();
-  if (!db) {
-    return res.json({
-      connected: false,
-      configured: true,
-      isTiDB: config.isTiDB,
-      localStorageActive: true,
-      message: "Gagal membuat pool koneksi MySQL, fallback ke penyimpanan server aktif",
+      message: "Mode Database Lokal / Serverless Aktif (Siap Pakai). Data otomatis tersimpan.",
     });
   }
 
   try {
+    const db = getDbPool();
+    if (!db) {
+      throw new Error("Pool MySQL tidak dapat diinisialisasi.");
+    }
+
     const start = Date.now();
-    const [rows]: any = await db.query("SELECT 1 AS connected, DATABASE() as db_name, VERSION() as version");
+    const [rows]: any = await db.query("SELECT 1 + 1 AS result, VERSION() as version");
     const latencyMs = Date.now() - start;
 
-    let tables: string[] = [];
-    try {
-      const [tableRows]: any = await db.query("SHOW TABLES");
-      tables = tableRows.map((tr: any) => Object.values(tr)[0]);
-    } catch {}
-
-    const isTiDB = Boolean(
-      config.isTiDB ||
-      String(rows[0]?.version || "").toLowerCase().includes("tidb")
+    const [tableRows]: any = await db.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = ?`,
+      [config.database]
     );
+    const tables = tableRows.map((r: any) => r.TABLE_NAME || r.table_name);
 
     return res.json({
       connected: true,
       configured: true,
-      database: rows[0]?.db_name || config.database,
+      database: config.database,
       host: config.host,
       port: config.port,
       ssl: Boolean(config.ssl),
+      isTiDB: config.isTiDB,
       latencyMs,
       tables,
-      isTiDB,
-      version: rows[0]?.version || "MySQL 8.x Compatible",
-      message: isTiDB
+      version: rows[0]?.version,
+      message: config.isTiDB
         ? "Terhubung aktif ke TiDB Cloud Serverless Distributed SQL"
         : "Terhubung aktif ke database MySQL Online",
     });
@@ -507,6 +506,84 @@ apiRouter.get("/db/status", async (req, res) => {
       isTiDB: config.isTiDB,
       localStorageActive: true,
       message: `Koneksi MySQL terganggu (${error.message}), penyimpanan lokal server aktif.`,
+    });
+  }
+});
+
+// 1.1 Endpoint Uji & Simpan Konfigurasi MySQL Langsung dari UI (Untuk Newbie / Zero-Friction)
+apiRouter.post("/db/test-and-save", async (req, res) => {
+  const { host, port = 3306, user, password = "", database, ssl = false } = req.body;
+
+  if (!host || !user || !database) {
+    return res.status(400).json({
+      success: false,
+      error: "Host, User, dan Nama Database wajib diisi!",
+    });
+  }
+
+  const isTiDB = Boolean(
+    host.includes("tidbcloud") ||
+    Number(port) === 4000
+  );
+
+  const testConfig: DbConfig = {
+    host: host.trim(),
+    port: Number(port) || (isTiDB ? 4000 : 3306),
+    user: user.trim(),
+    password: password.trim(),
+    database: database.trim(),
+    ssl: ssl || isTiDB ? { rejectUnauthorized: false } : undefined,
+    isTiDB,
+  };
+
+  let testPool: mysql.Pool | null = null;
+  try {
+    testPool = mysql.createPool({
+      host: testConfig.host,
+      user: testConfig.user,
+      password: testConfig.password,
+      database: testConfig.database,
+      port: testConfig.port,
+      waitForConnections: true,
+      connectionLimit: 5,
+      queueLimit: 0,
+      connectTimeout: 8000,
+      ssl: testConfig.ssl,
+    });
+
+    const start = Date.now();
+    await testPool.query("SELECT 1 + 1 AS test_res");
+    const latencyMs = Date.now() - start;
+
+    // Inisialisasi seluruh tabel pada database baru
+    await initTablesIfConnected(testPool);
+
+    // Sukses: update runtime config & pool utama
+    if (pool) {
+      try { await pool.end(); } catch {}
+    }
+    runtimeDbConfig = testConfig;
+    pool = testPool;
+    tablesInitialized = true;
+
+    // Simpan ke disk config jika memungkinkan
+    try {
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(testConfig, null, 2), "utf-8");
+    } catch {}
+
+    return res.json({
+      success: true,
+      latencyMs,
+      isTiDB,
+      message: `Berhasil terhubung ke ${isTiDB ? "TiDB Cloud" : "MySQL"} (${testConfig.database})! Semua tabel siap.`,
+    });
+  } catch (err: any) {
+    if (testPool) {
+      try { await testPool.end(); } catch {}
+    }
+    return res.status(200).json({
+      success: false,
+      error: `Gagal menghubungkan ke MySQL: ${err.message}`,
     });
   }
 });
@@ -529,7 +606,7 @@ apiRouter.post("/db/sync-all", async (req, res) => {
   if (!db) {
     return res.json({
       success: true,
-      message: "Data tersimpan di penyimpanan database lokal server.",
+      message: "Data tersimpan di database lokal & browser siap pakai.",
       syncedCounts: {
         siswa: siswa.length,
         dudi: dudi.length,

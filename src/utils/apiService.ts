@@ -15,6 +15,15 @@ export interface DbStatusResponse {
   message: string;
 }
 
+export interface DbConfigPayload {
+  host: string;
+  port: number;
+  user: string;
+  password?: string;
+  database: string;
+  ssl?: boolean;
+}
+
 // Helper aman parsing JSON (mencegah error jika server proxy mengembalikan HTML 404/500)
 async function safeJsonParse<T>(res: Response): Promise<T | null> {
   try {
@@ -52,6 +61,32 @@ export const checkDbConnection = async (): Promise<DbStatusResponse> => {
       configured: false,
       isTiDB: false,
       message: 'Server backend / Vercel API belum dapat dijangkau.',
+    };
+  }
+};
+
+// UJI & SIMPAN KONFIGURASI DATABASE LANGSUNG
+export const testAndSaveDbConfig = async (
+  config: DbConfigPayload
+): Promise<{ success: boolean; message?: string; error?: string; latencyMs?: number; isTiDB?: boolean }> => {
+  try {
+    const res = await fetch('/api/db/test-and-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await safeJsonParse<{ success: boolean; message?: string; error?: string; latencyMs?: number; isTiDB?: boolean }>(res);
+    if (!res.ok || !data) {
+      return {
+        success: false,
+        error: data?.error || `Gagal menyambung ke server (HTTP ${res.status})`,
+      };
+    }
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Koneksi ke backend terputus',
     };
   }
 };
