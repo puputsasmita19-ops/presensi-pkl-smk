@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   X,
   User,
@@ -26,10 +26,14 @@ import {
   Check,
   RotateCcw,
   CalendarDays,
+  Camera,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 import { Siswa, DUDI, GuruPembimbing, Presensi } from '../types';
 import { exportPresensiToPDF } from '../utils/pdfExport';
 import { KalenderInteraktifPresensi } from './KalenderInteraktifPresensi';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface ProfilDetailSiswaModalProps {
   isOpen: boolean;
@@ -39,6 +43,7 @@ interface ProfilDetailSiswaModalProps {
   guruList: GuruPembimbing[];
   presensiList: Presensi[];
   onOpenWhatsAppModal?: () => void;
+  onSaveSiswa?: (siswa: Siswa) => void;
 }
 
 export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
@@ -49,10 +54,13 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
   guruList,
   presensiList,
   onOpenWhatsAppModal,
+  onSaveSiswa,
 }) => {
   // Active Tab inside modal
   const [activeTab, setActiveTab] = useState<'ringkasan' | 'kalender' | 'presensi' | 'dudi'>('ringkasan');
   const [presensiViewMode, setPresensiViewMode] = useState<'kalender' | 'tabel'>('kalender');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Filter state for individual attendance history
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -159,6 +167,42 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
     handleWhatsAppChat(siswa.nomor_wa, msg);
   };
 
+  // Photo upload handler
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !siswa || !onSaveSiswa) return;
+    try {
+      setIsUploadingPhoto(true);
+      const res = await compressImageFile(file, undefined, {
+        maxWidth: 600,
+        maxHeight: 600,
+        quality: 0.82,
+      });
+      const updatedSiswa: Siswa = {
+        ...siswa,
+        foto_profil: res.dataUrl,
+      };
+      onSaveSiswa(updatedSiswa);
+    } catch (err) {
+      console.error('Gagal mengompresi & mengganti foto profil:', err);
+      alert('Gagal memproses file foto. Pastikan format file gambar valid.');
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    if (!siswa || !onSaveSiswa) return;
+    if (window.confirm('Hapus foto profil khusus siswa ini?')) {
+      const updatedSiswa: Siswa = {
+        ...siswa,
+        foto_profil: '',
+      };
+      onSaveSiswa(updatedSiswa);
+    }
+  };
+
   return (
     <div
       id="modal-profil-detail-siswa"
@@ -222,9 +266,9 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
           <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             {/* Left: Avatar & Info */}
             <div className="flex items-center gap-4 flex-1 min-w-0">
-              {/* Student Photo */}
+              {/* Student Photo with Direct Upload Capability */}
               <div className="relative group shrink-0">
-                <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-slate-800 ring-2 ring-white/20 shadow-lg flex items-center justify-center">
+                <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-slate-800 ring-2 ring-white/20 shadow-lg flex items-center justify-center relative">
                   {displayPhoto ? (
                     <img
                       src={displayPhoto}
@@ -237,23 +281,56 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
                       {siswa.nama_lengkap.charAt(0)}
                     </div>
                   )}
+
+                  {isUploadingPhoto && (
+                    <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center text-white text-[10px] font-bold gap-1">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menyimpan</span>
+                    </div>
+                  )}
                 </div>
-                {displayPhoto && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLightboxPhoto({
-                        url: displayPhoto,
-                        caption: `Foto Profil: ${siswa.nama_lengkap}`,
-                        subCaption: `${siswa.nis} • ${siswa.kelas}`,
-                      })
-                    }
-                    className="absolute bottom-1 right-1 p-1 bg-slate-900/90 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-[10px] flex items-center gap-1 shadow-md cursor-pointer"
-                    title="Perbesar Foto"
-                  >
-                    <Eye className="w-3 h-3" />
-                  </button>
-                )}
+
+                {/* Quick Action Controls on Avatar */}
+                <div className="absolute -bottom-1 -right-1 flex items-center gap-1">
+                  {onSaveSiswa && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePhotoSelect}
+                        className="hidden"
+                        id="input-upload-foto-siswa"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg shadow-md transition cursor-pointer"
+                        title="Ganti Foto Profil Siswa"
+                        aria-label="Ganti Foto Profil"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+
+                  {displayPhoto && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLightboxPhoto({
+                          url: displayPhoto,
+                          caption: `Foto Profil: ${siswa.nama_lengkap}`,
+                          subCaption: `${siswa.nis} • ${siswa.kelas}`,
+                        })
+                      }
+                      className="p-1.5 bg-slate-900/90 hover:bg-slate-800 text-white rounded-lg shadow-md transition cursor-pointer"
+                      title="Perbesar Foto"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Student Bio Info */}

@@ -37,6 +37,7 @@ import {
 import { Siswa, DUDI, GuruPembimbing, User, ShiftKerja, TipeJadwalKerja } from '../types';
 import { NAMA_HARI_INDONESIA } from '../utils/shiftHelper';
 import { ImportExportModal, MasterDataType } from './ImportExportModal';
+import { compressImageFile } from '../utils/imageCompressor';
 import {
   getStoredUsers,
   updateUserPassword,
@@ -217,6 +218,7 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
     id_guru_pembimbing: guruList[0]?.id_guru || '',
     nomor_wa: '08',
     nomor_wa_ortu: '08',
+    foto_profil: '',
   });
 
   // Form states for Guru
@@ -397,6 +399,7 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
         id_guru_pembimbing: siswa.id_guru_pembimbing,
         nomor_wa: siswa.nomor_wa,
         nomor_wa_ortu: siswa.nomor_wa_ortu,
+        foto_profil: siswa.foto_profil || '',
       });
     } else {
       setEditingSiswa(null);
@@ -412,6 +415,7 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
         id_guru_pembimbing: guruList[0]?.id_guru || '',
         nomor_wa: '085712345600',
         nomor_wa_ortu: '081298765400',
+        foto_profil: '',
       });
     }
     setIsSiswaModalOpen(true);
@@ -432,6 +436,7 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
       id_guru_pembimbing: siswaForm.id_guru_pembimbing,
       nomor_wa: siswaForm.nomor_wa,
       nomor_wa_ortu: siswaForm.nomor_wa_ortu,
+      foto_profil: siswaForm.foto_profil || undefined,
     };
 
     onSaveSiswa(record);
@@ -1715,6 +1720,62 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
             )}
 
             <form onSubmit={handleSaveSiswaSubmit} className="mt-4 space-y-3 text-xs">
+              {/* Foto Profil Siswa Upload & Preview */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3.5">
+                <div className="w-14 h-14 rounded-xl bg-slate-200 border border-slate-300 overflow-hidden flex items-center justify-center shrink-0 font-bold text-slate-500 text-lg relative">
+                  {siswaForm.foto_profil ? (
+                    <img
+                      src={siswaForm.foto_profil}
+                      alt={siswaForm.nama_lengkap || 'Foto Siswa'}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span>{siswaForm.nama_lengkap ? siswaForm.nama_lengkap.charAt(0) : 'S'}</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <label className="font-bold text-slate-700 block text-[11px]">
+                    Foto Profil Siswa:
+                  </label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition flex items-center gap-1 shadow-2xs">
+                      <Upload className="w-3 h-3" />
+                      <span>{siswaForm.foto_profil ? 'Ganti Foto' : 'Unggah Foto'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const res = await compressImageFile(file, undefined, {
+                                maxWidth: 600,
+                                maxHeight: 600,
+                                quality: 0.82,
+                              });
+                              setSiswaForm((prev) => ({ ...prev, foto_profil: res.dataUrl }));
+                            } catch (err) {
+                              console.error(err);
+                              alert('Gagal memproses foto.');
+                            }
+                          }
+                        }}
+                      />
+                    </label>
+                    {siswaForm.foto_profil && (
+                      <button
+                        type="button"
+                        onClick={() => setSiswaForm((prev) => ({ ...prev, foto_profil: '' }))}
+                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                      >
+                        Hapus Foto
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Nama Lengkap Siswa:</label>
                 <input

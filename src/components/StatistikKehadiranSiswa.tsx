@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   User,
   Siswa,
@@ -27,6 +27,7 @@ import {
   XCircle,
   FileCheck,
 } from 'lucide-react';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface StatistikKehadiranSiswaProps {
   currentUser: User;
@@ -36,6 +37,7 @@ interface StatistikKehadiranSiswaProps {
   presensiList: Presensi[];
   onNavigateTab?: (tab: string) => void;
   onSelectSiswaDetail?: (siswa: Siswa) => void;
+  onSaveSiswa?: (siswa: Siswa) => void;
 }
 
 export const StatistikKehadiranSiswa: React.FC<StatistikKehadiranSiswaProps> = ({
@@ -46,9 +48,37 @@ export const StatistikKehadiranSiswa: React.FC<StatistikKehadiranSiswaProps> = (
   presensiList,
   onNavigateTab,
   onSelectSiswaDetail,
+  onSaveSiswa,
 }) => {
   const [filterStatus, setFilterStatus] = useState<string>('semua');
   const [selectedPhotoPreview, setSelectedPhotoPreview] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Photo upload handler
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentSiswa || !onSaveSiswa) return;
+    try {
+      setIsUploadingPhoto(true);
+      const res = await compressImageFile(file, undefined, {
+        maxWidth: 600,
+        maxHeight: 600,
+        quality: 0.82,
+      });
+      const updatedSiswa: Siswa = {
+        ...currentSiswa,
+        foto_profil: res.dataUrl,
+      };
+      onSaveSiswa(updatedSiswa);
+    } catch (err) {
+      console.error('Gagal mengganti foto profil siswa:', err);
+      alert('Gagal memproses file foto. Pastikan format file gambar valid.');
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Identify current student profile
   const currentSiswa = useMemo(() => {
@@ -228,15 +258,45 @@ export const StatistikKehadiranSiswa: React.FC<StatistikKehadiranSiswaProps> = (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3 transition-colors">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-sky-100 dark:bg-sky-950/70 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold flex items-center justify-center text-base shrink-0 overflow-hidden">
-                {currentSiswa.foto_profil ? (
-                  <img
-                    src={currentSiswa.foto_profil}
-                    alt={currentSiswa.nama_lengkap}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  currentSiswa.nama_lengkap.charAt(0)
+              <div className="relative group shrink-0">
+                <div className="w-12 h-12 rounded-xl bg-sky-100 dark:bg-sky-950/70 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold flex items-center justify-center text-base overflow-hidden relative shadow-2xs">
+                  {currentSiswa.foto_profil ? (
+                    <img
+                      src={currentSiswa.foto_profil}
+                      alt={currentSiswa.nama_lengkap}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    currentSiswa.nama_lengkap.charAt(0)
+                  )}
+
+                  {isUploadingPhoto && (
+                    <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center text-white">
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+
+                {onSaveSiswa && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoSelect}
+                      className="hidden"
+                      id="input-upload-foto-siswa-dash"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute -bottom-1 -right-1 p-1 bg-sky-600 hover:bg-sky-500 text-white rounded-md shadow-xs transition cursor-pointer"
+                      title="Ganti Foto Profil"
+                      aria-label="Ganti Foto Profil"
+                    >
+                      <Camera className="w-2.5 h-2.5" />
+                    </button>
+                  </>
                 )}
               </div>
               <div>

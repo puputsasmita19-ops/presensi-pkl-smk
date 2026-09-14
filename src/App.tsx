@@ -953,6 +953,14 @@ export default function App() {
       return [...prev, siswa];
     });
 
+    // Update modal detail state jika sedang dibuka
+    setSelectedSiswaDetail((prev) => {
+      if (prev && prev.id_siswa === siswa.id_siswa) {
+        return siswa;
+      }
+      return prev;
+    });
+
     // Simpan ke Firestore Realtime Database
     saveSiswaToFirestore(siswa).then((success) => {
       if (success) {
@@ -1177,6 +1185,7 @@ export default function App() {
             presensiList={presensiList}
             onNavigateTab={(tab) => setActiveTab(tab)}
             onSelectSiswaDetail={handleOpenSiswaDetail}
+            onSaveSiswa={handleSaveSiswa}
           />
         )}
 
@@ -1320,6 +1329,7 @@ export default function App() {
         guruList={guruList}
         presensiList={presensiList}
         onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
+        onSaveSiswa={handleSaveSiswa}
       />
 
       {/* Floating Network & Sync Toast */}
