@@ -57,7 +57,11 @@ import {
   savePresensiToDatabase,
   syncOfflinePresensiToDatabase,
 } from './services/offlinePresensiService';
-import { executeUnifiedPresensiSave, executeUnifiedKunjunganSave } from './services/unifiedStorageService';
+import {
+  executeUnifiedPresensiSave,
+  executeUnifiedKunjunganSave,
+  syncAllPendingPhotosToGoogleDrive,
+} from './services/unifiedStorageService';
 import {
   getAllPresensiFromIndexedDb,
   getAllKunjunganFromIndexedDb,
@@ -574,6 +578,60 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, [currentUser]);
+
+  // Otomatisasi Sinkronisasi Foto Selfie & Kunjungan ke Google Drive secara Latar Belakang (Tanpa Perlu Upload Manual Admin)
+  useEffect(() => {
+    if (!isOnline) return;
+    if (!isGoogleConnected && !isGoogleDriveLinked()) return;
+
+    let isRunning = false;
+    const runAutoDriveSync = async () => {
+      if (isRunning) return;
+      isRunning = true;
+      try {
+        const res = await syncAllPendingPhotosToGoogleDrive(
+          presensiList,
+          siswaList,
+          kunjunganGuruList,
+          (updatedP) => {
+            setPresensiList((prev) =>
+              prev.map((item) => (item.id_presensi === updatedP.id_presensi ? updatedP : item))
+            );
+          },
+          (updatedK) => {
+            setKunjunganGuruList((prev) =>
+              prev.map((item) => (item.id_kunjungan === updatedK.id_kunjungan ? updatedK : item))
+            );
+          }
+        );
+
+        if (res.uploadedPresensi > 0 || res.uploadedKunjungan > 0) {
+          const total = res.uploadedPresensi + res.uploadedKunjungan;
+          addLog(
+            'Google Drive',
+            'Auto-Sync Foto ke Google Drive Berhasil',
+            `Otomatis mengunggah ${total} foto (${res.uploadedPresensi} presensi, ${res.uploadedKunjungan} supervisi) ke Google Drive Folder "Presensi & Jurnal PKL SMK".`,
+            'Sukses',
+            currentUser,
+            'Background Auto-Sync'
+          );
+        }
+      } catch (err) {
+        console.warn('Background auto drive sync skipped:', err);
+      } finally {
+        isRunning = false;
+      }
+    };
+
+    // Jalankan timer sync otomatis
+    const timer = setTimeout(runAutoDriveSync, 2000);
+    const interval = setInterval(runAutoDriveSync, 30000);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [isOnline, isGoogleConnected, presensiList, siswaList, kunjunganGuruList]);
 
   // Login handler
   const handleLoginSuccess = (user: User, googleConnected = false) => {
@@ -1187,6 +1245,16 @@ export default function App() {
           dudiList={dudiList}
           kunjunganList={kunjunganGuruList}
           onConnectionChange={(connected) => setIsGoogleConnected(connected)}
+          onPresensiUpdated={(updatedP) => {
+            setPresensiList((prev) =>
+              prev.map((item) => (item.id_presensi === updatedP.id_presensi ? updatedP : item))
+            );
+          }}
+          onKunjunganUpdated={(updatedK) => {
+            setKunjunganGuruList((prev) =>
+              prev.map((item) => (item.id_kunjungan === updatedK.id_kunjungan ? updatedK : item))
+            );
+          }}
         />
       )}
 

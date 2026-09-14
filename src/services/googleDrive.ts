@@ -132,7 +132,7 @@ export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL S
 };
 
 /**
- * Upload a text / JSON / blob file to Google Drive
+ * Upload a text / JSON / blob file to Google Drive using standard multipart/related format
  */
 export const uploadFileToDrive = async (
   fileName: string,
@@ -142,7 +142,7 @@ export const uploadFileToDrive = async (
 ): Promise<DriveFileItem> => {
   const token = getCachedAccessToken();
   if (!token) {
-    throw new Error('Belum terhubung ke Google Drive.');
+    throw new Error('Belum terhubung ke Google Drive. Silakan hubungkan akun Google Anda.');
   }
 
   const metadata: any = {
@@ -154,32 +154,48 @@ export const uploadFileToDrive = async (
     metadata.parents = [folderId];
   }
 
-  const form = new FormData();
-  form.append(
-    'metadata',
-    new Blob([JSON.stringify(metadata)], { type: 'application/json' })
+  const boundary = '-------' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+  const metadataBlob = new Blob([JSON.stringify(metadata)], {
+    type: 'application/json; charset=UTF-8',
+  });
+
+  const mediaBlob =
+    typeof content === 'string'
+      ? new Blob([content], { type: mimeType })
+      : content;
+
+  // Google Drive REST API v3 multipart/related boundary format
+  const multipartBlob = new Blob(
+    [
+      `--${boundary}\r\n`,
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+      metadataBlob,
+      `\r\n--${boundary}\r\n`,
+      `Content-Type: ${mimeType}\r\n\r\n`,
+      mediaBlob,
+      `\r\n--${boundary}--`,
+    ],
+    { type: `multipart/related; boundary=${boundary}` }
   );
 
-  if (typeof content === 'string') {
-    form.append('file', new Blob([content], { type: mimeType }));
-  } else {
-    form.append('file', content);
-  }
-
   const response = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,mimeType',
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,iconLink,createdTime,size,mimeType',
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
       },
-      body: form,
+      body: multipartBlob,
     }
   );
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'Gagal mengunggah file ke Google Drive');
+    const message =
+      err.error?.message ||
+      `Gagal mengunggah file ke Google Drive (Status: ${response.status} ${response.statusText})`;
+    throw new Error(message);
   }
 
   return await response.json();

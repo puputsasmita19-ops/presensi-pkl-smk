@@ -1,5 +1,5 @@
-import { Presensi, KunjunganGuru } from '../types';
-import { getCachedAccessToken } from './googleAuth';
+import { Presensi, KunjunganGuru, Siswa } from '../types';
+import { getCachedAccessToken, isGoogleDriveLinked } from './googleAuth';
 import { uploadFileToDrive, getOrCreatePklFolder } from './googleDrive';
 import { saveToOfflineQueue } from './offlinePresensiService';
 import { savePresensiToIndexedDb, saveKunjunganToIndexedDb } from './indexedDbService';
@@ -28,7 +28,7 @@ export interface DriveUploadResult {
 }
 
 /**
- * Mengonversi Base64 Data URI ke W3C Blob standar untuk upload file multipart ke Google Drive.
+ * Mengonversi Base64 Data URI / SVG Data URI ke W3C Blob standar untuk upload file multipart ke Google Drive.
  */
 export function convertDataUriToBlob(
   dataUri: string,
@@ -40,27 +40,43 @@ export function convertDataUriToBlob(
 
     if (dataUri.includes(';base64,')) {
       const parts = dataUri.split(';base64,');
-      mimeType = parts[0].replace('data:', '') || defaultMimeType;
+      mimeType = parts[0].replace('data:', '').trim() || defaultMimeType;
       base64Data = parts[1];
+      const cleanBase64 = base64Data.replace(/[\r\n\s]+/g, '');
+      const byteCharacters = atob(cleanBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      return { blob: new Blob([byteArray], { type: mimeType }), mimeType };
     } else if (dataUri.startsWith('data:')) {
       const commaIdx = dataUri.indexOf(',');
       if (commaIdx !== -1) {
-        mimeType = dataUri.substring(5, commaIdx).split(';')[0] || defaultMimeType;
-        base64Data = dataUri.substring(commaIdx + 1);
+        mimeType = dataUri.substring(5, commaIdx).split(';')[0].trim() || defaultMimeType;
+        const rawContent = decodeURIComponent(dataUri.substring(commaIdx + 1));
+        return { blob: new Blob([rawContent], { type: mimeType }), mimeType };
       }
     }
 
-    const cleanBase64 = base64Data.replace(/[\r\n\s]+/g, '');
-    const byteCharacters = atob(cleanBase64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    // Jika plain Base64 string tanpa header data:
+    if (!dataUri.startsWith('http') && !dataUri.startsWith('/') && dataUri.length > 50) {
+      try {
+        const cleanBase64 = dataUri.replace(/[\r\n\s]+/g, '');
+        const byteCharacters = atob(cleanBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return { blob: new Blob([byteArray], { type: defaultMimeType }), mimeType: defaultMimeType };
+      } catch {}
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: mimeType });
-    return { blob, mimeType };
+
+    const fallbackBlob = new Blob([dataUri], { type: 'text/plain' });
+    return { blob: fallbackBlob, mimeType: 'text/plain' };
   } catch (err: any) {
-    console.error('Error saat konversi Base64 ke Blob:', err);
+    console.error('Error saat konversi Data URI ke Blob:', err);
     const fallbackBlob = new Blob([dataUri], { type: 'text/plain' });
     return { blob: fallbackBlob, mimeType: 'text/plain' };
   }
@@ -70,14 +86,14 @@ export function createPresensiDriveUploadPayload(
   presensi: Presensi,
   studentName: string = 'Siswa'
 ): { blob: Blob; fileName: string; mimeType: string } | null {
-  if (!presensi.foto_selfie || !presensi.foto_selfie.startsWith('data:image')) {
+  if (!presensi.foto_selfie || !presensi.foto_selfie.trim()) {
     return null;
   }
 
   const { blob, mimeType } = convertDataUriToBlob(presensi.foto_selfie);
   const cleanName = studentName.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const dateStr = presensi.tanggal.replace(/-/g, '');
-  const ext = mimeType.includes('png') ? 'png' : 'jpg';
+  const dateStr = (presensi.tanggal || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('svg') ? 'svg' : 'jpg';
   const fileName = `SELFIE_${dateStr}_${cleanName}_${presensi.id_presensi}.${ext}`;
 
   return { blob, fileName, mimeType };
@@ -87,7 +103,7 @@ export function createKunjunganDriveUploadPayload(
   kunjungan: KunjunganGuru,
   guruName: string = 'Guru'
 ): { blob: Blob; fileName: string; mimeType: string } | null {
-  if (!kunjungan.foto_kunjungan || !kunjungan.foto_kunjungan.startsWith('data:image')) {
+  if (!kunjungan.foto_kunjungan || !kunjungan.foto_kunjungan.trim()) {
     return null;
   }
 
@@ -95,8 +111,8 @@ export function createKunjunganDriveUploadPayload(
   const cleanGuru = (guruName || kunjungan.nama_guru || 'Guru').replace(/[^a-zA-Z0-9_-]/g, '_');
   const cleanDudi = (kunjungan.nama_dudi || 'DUDI').replace(/[^a-zA-Z0-9_-]/g, '_');
   const dateStr = (kunjungan.tanggal || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
-  const ext = mimeType.includes('png') ? 'png' : 'jpg';
-  const fileName = `KUNJUNGAN_${dateStr}_${cleanGuru}_${cleanDudi}.${ext}`;
+  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('svg') ? 'svg' : 'jpg';
+  const fileName = `KUNJUNGAN_${dateStr}_${cleanGuru}_${cleanDudi}_${kunjungan.id_kunjungan || Date.now()}.${ext}`;
 
   return { blob, fileName, mimeType };
 }
@@ -399,3 +415,94 @@ export async function executeUnifiedKunjunganSave(
   report.success = true;
   return { kunjungan: workingKunjungan, report };
 }
+
+/**
+ * Otomatisasi Background Sync untuk semua foto selfie presensi dan kunjungan guru
+ * yang belum tersimpan di Google Drive. Berjalan mandiri tanpa perlu trigger manual.
+ */
+export async function syncAllPendingPhotosToGoogleDrive(
+  presensiList: Presensi[],
+  siswaList: Siswa[],
+  kunjunganList: KunjunganGuru[],
+  onPresensiUpdated?: (updated: Presensi) => void,
+  onKunjunganUpdated?: (updated: KunjunganGuru) => void
+): Promise<{ uploadedPresensi: number; uploadedKunjungan: number; failed: number }> {
+  if (!isGoogleDriveLinked()) {
+    return { uploadedPresensi: 0, uploadedKunjungan: 0, failed: 0 };
+  }
+
+  let uploadedPresensi = 0;
+  let uploadedKunjungan = 0;
+  let failed = 0;
+
+  // 1. Filter presensi yang punya foto selfie tetapi belum memiliki drive_file_id
+  const pendingPresensi = presensiList.filter(
+    (p) =>
+      p.foto_selfie &&
+      (p.foto_selfie.startsWith('data:') || p.foto_selfie.length > 50) &&
+      (!p.drive_file_id || p.image_sync_status !== 'synced')
+  );
+
+  for (const p of pendingPresensi) {
+    const student = siswaList.find((s) => s.id_siswa === p.id_siswa);
+    const sName = student?.nama_lengkap || 'Siswa';
+    try {
+      const res = await uploadPresensiPhotoToDrive(p, sName);
+      if (res.success && (res.driveFileId || res.driveUrl)) {
+        uploadedPresensi++;
+        const updatedPresensi: Presensi = {
+          ...p,
+          drive_file_id: res.driveFileId,
+          drive_view_url: res.driveUrl || p.drive_view_url,
+          image_sync_status: 'synced',
+        };
+        await savePresensiToFirestore(updatedPresensi).catch(() => {});
+        await savePresensiToIndexedDb(updatedPresensi).catch(() => {});
+        if (onPresensiUpdated) {
+          onPresensiUpdated(updatedPresensi);
+        }
+      } else {
+        failed++;
+      }
+    } catch (e) {
+      console.warn(`Gagal background upload presensi ${p.id_presensi} ke Drive:`, e);
+      failed++;
+    }
+  }
+
+  // 2. Filter kunjungan guru yang punya foto kunjungan tetapi belum ada drive_file_id
+  const pendingKunjungan = kunjunganList.filter(
+    (k) =>
+      k.foto_kunjungan &&
+      (k.foto_kunjungan.startsWith('data:') || k.foto_kunjungan.length > 50) &&
+      (!k.drive_file_id || k.image_sync_status !== 'synced')
+  );
+
+  for (const k of pendingKunjungan) {
+    try {
+      const res = await uploadKunjunganPhotoToDrive(k);
+      if (res.success && (res.driveFileId || res.driveUrl)) {
+        uploadedKunjungan++;
+        const updatedKunjungan: KunjunganGuru = {
+          ...k,
+          drive_file_id: res.driveFileId,
+          drive_view_url: res.driveUrl || k.drive_view_url,
+          image_sync_status: 'synced',
+        };
+        await saveKunjunganToFirestore(updatedKunjungan).catch(() => {});
+        await saveKunjunganToIndexedDb(updatedKunjungan).catch(() => {});
+        if (onKunjunganUpdated) {
+          onKunjunganUpdated(updatedKunjungan);
+        }
+      } else {
+        failed++;
+      }
+    } catch (e) {
+      console.warn(`Gagal background upload kunjungan ${k.id_kunjungan} ke Drive:`, e);
+      failed++;
+    }
+  }
+
+  return { uploadedPresensi, uploadedKunjungan, failed };
+}
+

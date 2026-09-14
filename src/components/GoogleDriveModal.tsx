@@ -18,7 +18,10 @@ import {
   resetCachedPklFolderId,
   DriveFileItem,
 } from '../services/googleDrive';
-import { uploadPresensiPhotoToDrive } from '../services/unifiedStorageService';
+import {
+  uploadPresensiPhotoToDrive,
+  uploadKunjunganPhotoToDrive,
+} from '../services/unifiedStorageService';
 import {
   CompressionPreset,
   getSavedCompressionPreset,
@@ -57,6 +60,8 @@ interface GoogleDriveModalProps {
   dudiList: DUDI[];
   kunjunganList?: KunjunganGuru[];
   onConnectionChange?: (connected: boolean) => void;
+  onPresensiUpdated?: (updated: Presensi) => void;
+  onKunjunganUpdated?: (updated: KunjunganGuru) => void;
 }
 
 export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
@@ -68,6 +73,8 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   dudiList,
   kunjunganList = [],
   onConnectionChange,
+  onPresensiUpdated,
+  onKunjunganUpdated,
 }) => {
   const [isOAuthConnected, setIsOAuthConnected] = useState<boolean>(false);
   const [connectedUser, setConnectedUser] = useState<GoogleUserProfile | null>(null);
@@ -200,15 +207,15 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     let failCount = 0;
 
     try {
-      const folderId = await getOrCreatePklFolder();
+      await getOrCreatePklFolder();
       const presensiWithPhotos = presensiList.filter(
-        (p) => p.foto_selfie && p.foto_selfie.startsWith('data:image')
+        (p) => p.foto_selfie && (p.foto_selfie.startsWith('data:') || p.foto_selfie.length > 50)
       );
 
-      if (presensiWithPhotos.length === 0) {
+      if (presensiWithPhotos.length === 0 && kunjunganList.length === 0) {
         setStatusMsg({
           type: 'warning',
-          text: 'Tidak ada foto presensi selfie yang perlu disinkronkan ke Google Drive.',
+          text: 'Tidak ada foto presensi selfie atau kunjungan yang perlu disinkronkan ke Google Drive.',
         });
         setIsLoading(false);
         return;
@@ -219,8 +226,17 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         const sName = student?.nama_lengkap || 'Siswa';
         try {
           const res = await uploadPresensiPhotoToDrive(p, sName);
-          if (res.success) {
+          if (res.success && (res.driveFileId || res.driveUrl)) {
             successCount++;
+            const updated: Presensi = {
+              ...p,
+              drive_file_id: res.driveFileId,
+              drive_view_url: res.driveUrl || p.drive_view_url,
+              image_sync_status: 'synced',
+            };
+            if (onPresensiUpdated) {
+              onPresensiUpdated(updated);
+            }
           } else {
             failCount++;
           }
@@ -229,10 +245,35 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         }
       }
 
+      // Sync kunjungan photos as well
+      const kunjunganWithPhotos = kunjunganList.filter(
+        (k) => k.foto_kunjungan && (k.foto_kunjungan.startsWith('data:') || k.foto_kunjungan.length > 50)
+      );
+
+      for (const k of kunjunganWithPhotos) {
+        try {
+          const res = await uploadKunjunganPhotoToDrive(k);
+          if (res.success && (res.driveFileId || res.driveUrl)) {
+            successCount++;
+            const updatedK: KunjunganGuru = {
+              ...k,
+              drive_file_id: res.driveFileId,
+              drive_view_url: res.driveUrl || k.drive_view_url,
+              image_sync_status: 'synced',
+            };
+            if (onKunjunganUpdated) {
+              onKunjunganUpdated(updatedK);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       await fetchOAuthFiles();
       setStatusMsg({
         type: successCount > 0 ? 'success' : 'warning',
-        text: `Sinkronisasi Foto Selesai: ${successCount} foto selfie berhasil diunggah ke Google Drive (Folder: Presensi & Jurnal PKL SMK)${
+        text: `Sinkronisasi Foto Selesai: ${successCount} foto selfie presensi berhasil disimpan di Google Drive (Folder: Presensi & Jurnal PKL SMK)${
           failCount > 0 ? `, ${failCount} gagal.` : '.'
         }`,
       });
