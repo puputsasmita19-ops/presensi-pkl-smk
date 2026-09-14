@@ -230,10 +230,14 @@ export function getDbPool(): mysql.Pool | null {
         waitForConnections: true,
         connectionLimit: isServerless ? 5 : 10,
         queueLimit: 0,
-        connectTimeout: 10000,
+        connectTimeout: 8000,
         enableKeepAlive: true,
         keepAliveInitialDelay: 10000,
         ssl: config.ssl,
+      });
+
+      (pool as any)?.on?.("error", (err: any) => {
+        console.warn("Peringatan Pool MySQL Terkoneksi:", err?.message || err);
       });
     } catch (err) {
       console.error("Gagal membuat koneksi pool MySQL:", err);
@@ -510,80 +514,128 @@ apiRouter.get("/db/status", async (req, res) => {
   }
 });
 
+// Helper Format Pesan Kesalahan MySQL agar Ramah Pengguna
+export function formatMySQLError(err: any): string {
+  if (!err) return "Terjadi kesalahan tidak diketahui.";
+  const msg = err.message || String(err);
+  const code = err.code || "";
+
+  if (code === "ER_ACCESS_DENIED_ERROR" || msg.includes("Access denied")) {
+    return "Akses Ditolak: Username atau Password database salah, atau pengguna tidak memiliki izin akses ke database ini.";
+  }
+  if (code === "ER_BAD_DB_ERROR" || msg.includes("Unknown database")) {
+    return "Database Tidak Ditemukan: Nama database tidak ada di server. Buat database tersebut terlebih dahulu di phpMyAdmin/TiDB Cloud.";
+  }
+  if (code === "ENOTFOUND" || msg.includes("getaddrinfo ENOTFOUND")) {
+    return "Host Tidak Ditemukan: Alamat Host database salah atau tidak dapat dijangkau dari internet.";
+  }
+  if (
+    code === "ETIMEDOUT" ||
+    code === "ECONNREFUSED" ||
+    msg.includes("timed out") ||
+    msg.includes("connect ECONNREFUSED")
+  ) {
+    return "Koneksi Gagal / Timeout: Server database tidak merespons. Jika menggunakan Hosting cPanel atau Server pribadi, pastikan fitur 'Remote MySQL' sudah mengizinkan koneksi dari luar (IP: %).";
+  }
+  if (msg.includes("SSL") || code === "HANDSHAKE_NO_SSL_SUPPORT") {
+    return "Masalah SSL / TLS: Server tidak mendukung SSL atau sertifikat tidak cocok. Coba nonaktifkan centang SSL.";
+  }
+  return `Gagal menghubungkan: ${msg} ${code ? `(Kode: ${code})` : ""}`;
+}
+
 // 1.1 Endpoint Uji & Simpan Konfigurasi MySQL Langsung dari UI (Untuk Newbie / Zero-Friction)
 apiRouter.post("/db/test-and-save", async (req, res) => {
-  const { host, port = 3306, user, password = "", database, ssl = false } = req.body;
-
-  if (!host || !user || !database) {
-    return res.status(400).json({
-      success: false,
-      error: "Host, User, dan Nama Database wajib diisi!",
-    });
-  }
-
-  const isTiDB = Boolean(
-    host.includes("tidbcloud") ||
-    Number(port) === 4000
-  );
-
-  const testConfig: DbConfig = {
-    host: host.trim(),
-    port: Number(port) || (isTiDB ? 4000 : 3306),
-    user: user.trim(),
-    password: password.trim(),
-    database: database.trim(),
-    ssl: ssl || isTiDB ? { rejectUnauthorized: false } : undefined,
-    isTiDB,
-  };
-
-  let testPool: mysql.Pool | null = null;
   try {
-    testPool = mysql.createPool({
-      host: testConfig.host,
-      user: testConfig.user,
-      password: testConfig.password,
-      database: testConfig.database,
-      port: testConfig.port,
-      waitForConnections: true,
-      connectionLimit: 5,
-      queueLimit: 0,
-      connectTimeout: 8000,
-      ssl: testConfig.ssl,
-    });
+    const { host, port = 3306, user, password = "", database, ssl = false } = req.body || {};
 
-    const start = Date.now();
-    await testPool.query("SELECT 1 + 1 AS test_res");
-    const latencyMs = Date.now() - start;
-
-    // Inisialisasi seluruh tabel pada database baru
-    await initTablesIfConnected(testPool);
-
-    // Sukses: update runtime config & pool utama
-    if (pool) {
-      try { await pool.end(); } catch {}
+    if (!host || !user || !database) {
+      return res.status(200).json({
+        success: false,
+        error: "Host, User, dan Nama Database wajib diisi!",
+      });
     }
-    runtimeDbConfig = testConfig;
-    pool = testPool;
-    tablesInitialized = true;
 
-    // Simpan ke disk config jika memungkinkan
-    try {
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify(testConfig, null, 2), "utf-8");
-    } catch {}
+    const hostStr = String(host).trim();
+    const isTiDB = Boolean(
+      hostStr.includes("tidbcloud") ||
+      Number(port) === 4000
+    );
 
-    return res.json({
-      success: true,
-      latencyMs,
+    const isSSL = Boolean(ssl || isTiDB);
+
+    const testConfig: DbConfig = {
+      host: hostStr,
+      port: Number(port) || (isTiDB ? 4000 : 3306),
+      user: String(user).trim(),
+      password: String(password || "").trim(),
+      database: String(database).trim(),
+      ssl: isSSL ? { rejectUnauthorized: false } : undefined,
       isTiDB,
-      message: `Berhasil terhubung ke ${isTiDB ? "TiDB Cloud" : "MySQL"} (${testConfig.database})! Semua tabel siap.`,
-    });
-  } catch (err: any) {
-    if (testPool) {
-      try { await testPool.end(); } catch {}
+    };
+
+    let testPool: mysql.Pool | null = null;
+    try {
+      testPool = mysql.createPool({
+        host: testConfig.host,
+        user: testConfig.user,
+        password: testConfig.password,
+        database: testConfig.database,
+        port: testConfig.port,
+        waitForConnections: true,
+        connectionLimit: 3,
+        queueLimit: 0,
+        connectTimeout: 7000,
+        ssl: testConfig.ssl,
+      });
+
+      // Cegah unhandled 'error' event pada pool instance
+      (testPool as any)?.on?.("error", (poolErr: any) => {
+        console.warn("Peringatan Pool MySQL Uji:", poolErr?.message || poolErr);
+      });
+
+      const start = Date.now();
+      await testPool.query("SELECT 1 + 1 AS test_res");
+      const latencyMs = Date.now() - start;
+
+      // Inisialisasi seluruh tabel pada database baru secara aman
+      try {
+        await initTablesIfConnected(testPool);
+      } catch (tableErr: any) {
+        console.warn("Peringatan inisialisasi tabel baru:", tableErr.message);
+      }
+
+      // Sukses: update runtime config & pool utama
+      if (pool) {
+        try { await pool.end(); } catch {}
+      }
+      runtimeDbConfig = testConfig;
+      pool = testPool;
+      tablesInitialized = true;
+
+      // Simpan ke disk config jika memungkinkan
+      try {
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(testConfig, null, 2), "utf-8");
+      } catch {}
+
+      return res.json({
+        success: true,
+        latencyMs,
+        isTiDB,
+        message: `Berhasil terhubung ke ${isTiDB ? "TiDB Cloud" : "MySQL"} (${testConfig.database})! Semua 6 tabel PKL siap.`,
+      });
+    } catch (err: any) {
+      if (testPool) {
+        try { await testPool.end(); } catch {}
+      }
+      return res.status(200).json({
+        success: false,
+        error: formatMySQLError(err),
+      });
     }
+  } catch (outerErr: any) {
     return res.status(200).json({
       success: false,
-      error: `Gagal menghubungkan ke MySQL: ${err.message}`,
+      error: `Kesalahan internal: ${outerErr.message}`,
     });
   }
 });
@@ -1415,5 +1467,16 @@ apiRouter.post("/kunjungan", async (req, res) => {
 // Daftarkan router ke /api dan / (sehingga kompatibel dengan berbagai rewrite Vercel maupun express standar)
 app.use("/api", apiRouter);
 app.use("/", apiRouter);
+
+// Global Error Handler untuk memastikan response selalu JSON dan ramah pengguna
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Global Server Error:", err);
+  if (!res.headersSent) {
+    res.status(200).json({
+      success: false,
+      error: err?.message || "Terjadi kendala saat memproses permintaan di server.",
+    });
+  }
+});
 
 export default app;
