@@ -52,7 +52,7 @@ interface PresensiCerdasProps {
   siswaList: Siswa[];
   dudiList: DUDI[];
   presensiList: Presensi[];
-  onSavePresensi: (presensi: Presensi, sendWA: boolean) => void;
+  onSavePresensi: (presensi: Presensi, sendWA: boolean) => Promise<void> | void;
   onOpenWhatsAppModal: () => void;
   isOnline?: boolean;
   pendingOfflineCount?: number;
@@ -120,6 +120,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
   } | null>(null);
   const [compressPreset, setCompressPreset] = useState<CompressionPreset>(getSavedCompressionPreset());
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
@@ -522,7 +523,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
   }, []);
 
   // Handle Submit Presensi
-  const handleSubmit = (isCheckout: boolean = false) => {
+  const handleSubmit = async (isCheckout: boolean = false) => {
     if (selectedStatus === 'Hadir') {
       if (!isWithinRadius) {
         alert(
@@ -553,63 +554,70 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
     const nowTime = new Date();
     const timeStr = nowTime.toTimeString().split(' ')[0];
 
-    if (isCheckout && todayAttendance) {
-      // Absen Pulang
-      const updated: Presensi = {
-        ...todayAttendance,
-        jam_pulang: timeStr,
+    setIsSubmitting(true);
+    try {
+      if (isCheckout && todayAttendance) {
+        // Absen Pulang
+        const updated: Presensi = {
+          ...todayAttendance,
+          jam_pulang: timeStr,
+        };
+        await onSavePresensi(updated, false);
+        if (!isOnline) {
+          alert(
+            `[MODE OFFLINE] Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan di penyimpanan perangkat lokal. Data akan otomatis dikirim ke Database MySQL/TiDB saat online.`
+          );
+        } else {
+          alert(`Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan ke Database MySQL/TiDB Cloud!`);
+        }
+        return;
+      }
+
+      // Absen Masuk / Izin / Sakit
+      const newPresensi: Presensi = {
+        id_presensi: `PRS-${todayDateStr.replace(/-/g, '')}-${currentSiswa.id_siswa}`,
+        id_siswa: currentSiswa.id_siswa,
+        tanggal: todayDateStr,
+        hari: todayDayName,
+        id_shift: selectedShift?.id_shift,
+        nama_shift: selectedShift?.nama_shift,
+        jadwal_masuk: selectedShift?.jam_masuk || assignedDUDI.jam_masuk_standar,
+        jadwal_pulang: selectedShift?.jam_pulang || assignedDUDI.jam_pulang_standar,
+        status_ketepatan: selectedStatus === 'Hadir' ? punctualityCheck.status : undefined,
+        jam_masuk: selectedStatus === 'Hadir' ? timeStr : '-',
+        jam_pulang: null,
+        status: selectedStatus,
+        foto_selfie: selectedStatus === 'Hadir' ? capturedPhoto || DEFAULT_SELFIE_PREVIEW : '',
+        koordinat_absen: {
+          latitude: gpsCoords.latitude,
+          longitude: gpsCoords.longitude,
+          jarak_meter: calculatedDistance,
+          dalam_radius: isWithinRadius,
+        },
+        keterangan: keterangan.trim() || undefined,
+        notifikasi_wa_terkirim: true,
+        status_persetujuan_dudi: 'Menunggu',
+        catatan_dudi: '',
       };
-      onSavePresensi(updated, false);
+
+      await onSavePresensi(newPresensi, true);
       if (!isOnline) {
         alert(
-          `[MODE OFFLINE] Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan di penyimpanan perangkat lokal. Data akan otomatis dikirim ke Database MySQL/TiDB saat online.`
+          selectedStatus === 'Hadir'
+            ? `[MODE OFFLINE] Presensi Masuk berhasil dicatat (${timeStr} WIB) dan diamankan di penyimpanan lokal. Foto & data akan otomatis disinkronkan ke Google Drive & Database saat kembali online!`
+            : `[MODE OFFLINE] Laporan ${selectedStatus} tersimpan sementara di penyimpanan lokal perangkat.`
         );
       } else {
-        alert(`Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan ke Database MySQL/TiDB Cloud!`);
+        alert(
+          selectedStatus === 'Hadir'
+            ? `Presensi Masuk berhasil dicatat pada ${timeStr} WIB (${selectedShift?.nama_shift || 'Shift'} - ${punctualityCheck.deskripsi})! Foto diunggah ke Google Drive dan data tersimpan di Database MySQL/TiDB.`
+            : `Laporan ${selectedStatus} berhasil dikirim ke Database MySQL/TiDB!`
+        );
       }
-      return;
-    }
-
-    // Absen Masuk / Izin / Sakit
-    const newPresensi: Presensi = {
-      id_presensi: `PRS-${todayDateStr.replace(/-/g, '')}-${currentSiswa.id_siswa}`,
-      id_siswa: currentSiswa.id_siswa,
-      tanggal: todayDateStr,
-      hari: todayDayName,
-      id_shift: selectedShift?.id_shift,
-      nama_shift: selectedShift?.nama_shift,
-      jadwal_masuk: selectedShift?.jam_masuk || assignedDUDI.jam_masuk_standar,
-      jadwal_pulang: selectedShift?.jam_pulang || assignedDUDI.jam_pulang_standar,
-      status_ketepatan: selectedStatus === 'Hadir' ? punctualityCheck.status : undefined,
-      jam_masuk: selectedStatus === 'Hadir' ? timeStr : '-',
-      jam_pulang: null,
-      status: selectedStatus,
-      foto_selfie: selectedStatus === 'Hadir' ? capturedPhoto || DEFAULT_SELFIE_PREVIEW : '',
-      koordinat_absen: {
-        latitude: gpsCoords.latitude,
-        longitude: gpsCoords.longitude,
-        jarak_meter: calculatedDistance,
-        dalam_radius: isWithinRadius,
-      },
-      keterangan: keterangan.trim() || undefined,
-      notifikasi_wa_terkirim: true,
-      status_persetujuan_dudi: 'Menunggu',
-      catatan_dudi: '',
-    };
-
-    onSavePresensi(newPresensi, true);
-    if (!isOnline) {
-      alert(
-        selectedStatus === 'Hadir'
-          ? `[MODE OFFLINE] Presensi Masuk berhasil dicatat (${timeStr} WIB) dan diamankan di penyimpanan lokal. Foto & data akan otomatis disinkronkan ke Google Drive & Database saat kembali online!`
-          : `[MODE OFFLINE] Laporan ${selectedStatus} tersimpan sementara di penyimpanan lokal perangkat.`
-      );
-    } else {
-      alert(
-        selectedStatus === 'Hadir'
-          ? `Presensi Masuk berhasil dicatat pada ${timeStr} WIB (${selectedShift?.nama_shift || 'Shift'} - ${punctualityCheck.deskripsi})! Foto diunggah ke Google Drive dan data tersimpan di Database MySQL/TiDB.`
-          : `Laporan ${selectedStatus} berhasil dikirim ke Database MySQL/TiDB!`
-      );
+    } catch (err: any) {
+      alert(`Gagal memproses presensi: ${err?.message || 'Terjadi kesalahan sistem'}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -836,12 +844,12 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
               {todayAttendance.is_offline_pending ? (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                   <RefreshCw className="w-3 h-3 text-amber-600 animate-spin" />
-                  <span>Tersimpan di LocalStorage (Menunggu Sinkronisasi Firebase)</span>
+                  <span>Tersimpan di Cache Lokal (Menunggu Sinkronisasi Database)</span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                   <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>Tersinkronisasi ke Firebase Firestore Cloud</span>
+                  <span>Tersinkronisasi ke Database MySQL/TiDB Cloud & Drive</span>
                 </span>
               )}
 
@@ -852,7 +860,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                   disabled={isSyncing}
                   className="text-[10px] font-bold text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-amber-100 underline cursor-pointer"
                 >
-                  {isSyncing ? 'Sedang mengirim...' : 'Kirim Sekarang'}
+                  {isSyncing ? 'Sedang menyinkronkan...' : 'Sinkronkan Sekarang'}
                 </button>
               )}
             </div>
@@ -860,11 +868,16 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
             {todayAttendance.status === 'Hadir' && !todayAttendance.jam_pulang && (
               <button
                 id="btn-absen-pulang"
+                disabled={isSubmitting}
                 onClick={() => handleSubmit(true)}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 transition shadow-xs"
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 transition shadow-xs disabled:opacity-60 cursor-pointer"
               >
-                <Clock className="w-3.5 h-3.5" />
-                Catat Absen Pulang Sekarang
+                {isSubmitting ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Clock className="w-3.5 h-3.5" />
+                )}
+                <span>{isSubmitting ? 'Mencatat Absen Pulang...' : 'Catat Absen Pulang Sekarang'}</span>
               </button>
             )}
           </div>
@@ -888,7 +901,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
             </div>
             <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
               Anda tetap dapat melakukan absensi masuk, pulang, izin, maupun sakit beserta bukti foto selfie.
-              Data presensi Anda akan <strong>diamankan sementara di localStorage perangkat</strong> dan akan <strong>otomatis dikirimkan ke Firebase Firestore</strong> segera setelah koneksi internet kembali normal.
+              Data presensi Anda akan <strong>diamankan sementara di penyimpanan lokal perangkat</strong> dan akan <strong>otomatis dikirimkan ke Database MySQL/TiDB & Google Drive</strong> segera setelah koneksi internet kembali normal.
             </p>
             {pendingOfflineCount > 0 && (
               <div className="pt-1 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
@@ -1392,11 +1405,30 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
         <button
           type="button"
           id="btn-submit-presensi"
+          disabled={isSubmitting || isCompressing}
           onClick={() => handleSubmit(false)}
-          className="w-full min-h-[48px] py-3 px-4 rounded-xl bg-slate-900 dark:bg-sky-600 text-sky-400 dark:text-white hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-98 shadow-md border border-slate-800 dark:border-sky-700"
+          className={`w-full min-h-[48px] py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md border ${
+            isSubmitting || isCompressing
+              ? 'bg-slate-400 dark:bg-slate-700 text-slate-100 cursor-not-allowed border-transparent'
+              : 'bg-slate-900 dark:bg-sky-600 text-sky-400 dark:text-white hover:bg-slate-800 dark:hover:bg-sky-500 active:scale-98 shadow-md border-slate-800 dark:border-sky-700 cursor-pointer'
+          }`}
         >
-          <Send className="w-4 h-4" />
-          <span>Kirim Presensi {selectedStatus} ({selectedShift?.nama_shift || 'Shift'})</span>
+          {isSubmitting ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span>Menyimpan ke Database & Google Drive...</span>
+            </>
+          ) : isCompressing ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span>Mengompresi Foto...</span>
+            </>
+          ) : (
+            <>
+              <Send className="w-4 h-4" />
+              <span>Kirim Presensi {selectedStatus} ({selectedShift?.nama_shift || 'Shift'})</span>
+            </>
+          )}
         </button>
       </div>
 

@@ -113,8 +113,8 @@ async function initTablesIfConnected() {
         id_siswa VARCHAR(100) NOT NULL,
         tanggal DATE NOT NULL,
         hari VARCHAR(20),
-        jam_masuk TIME NOT NULL,
-        jam_pulang TIME,
+        jam_masuk VARCHAR(50) DEFAULT '00:00:00',
+        jam_pulang VARCHAR(50),
         status VARCHAR(50) NOT NULL,
         foto_selfie LONGTEXT,
         drive_file_id VARCHAR(255),
@@ -135,7 +135,13 @@ async function initTablesIfConnected() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // Pastikan kolom Google Drive ada jika tabel sudah pernah dibuat sebelumnya
+    // Pastikan kolom Google Drive & tipe jam fleksibel ada jika tabel sudah pernah dibuat sebelumnya
+    try {
+      await db.query(`ALTER TABLE presensi MODIFY COLUMN jam_masuk VARCHAR(50) NULL`);
+    } catch {}
+    try {
+      await db.query(`ALTER TABLE presensi MODIFY COLUMN jam_pulang VARCHAR(50) NULL`);
+    } catch {}
     try {
       await db.query(`ALTER TABLE presensi ADD COLUMN drive_file_id VARCHAR(255) AFTER foto_selfie`);
     } catch {}

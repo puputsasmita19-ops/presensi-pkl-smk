@@ -385,8 +385,8 @@ export default function App() {
     };
   }, []);
 
-  // Function to sync offline presensi queue to Firebase Firestore
-  const triggerSyncToFirebase = async () => {
+  // Function to sync offline presensi queue to Database MySQL / TiDB Cloud
+  const triggerSyncToDatabase = async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       setSyncToastMessage('Tidak dapat menyinkronkan: Perangkat sedang dalam mode offline.');
       setTimeout(() => setSyncToastMessage(null), 4000);
@@ -442,7 +442,7 @@ export default function App() {
         `Gagal menyinkronkan: ${err?.message || 'Koneksi terganggu'}. Data tetap aman tersimpan di perangkat lokal.`,
         'Peringatan',
         currentUser,
-        'Firebase Sync Error'
+        'Database Sync'
       );
     } finally {
       setIsSyncing(false);
@@ -456,12 +456,12 @@ export default function App() {
       addLog(
         'Autentikasi',
         'Koneksi Internet Pulih (Online)',
-        'Perangkat kembali terhubung ke internet. Memulai sinkronisasi otomatis data presensi ke Firebase Firestore...',
+        'Perangkat kembali terhubung ke internet. Memulai sinkronisasi otomatis data presensi ke Database MySQL/TiDB Cloud...',
         'Sukses',
         currentUser,
         'Network Online Event'
       );
-      triggerSyncToFirebase();
+      triggerSyncToDatabase();
     };
 
     const handleOffline = () => {
@@ -469,7 +469,7 @@ export default function App() {
       addLog(
         'Autentikasi',
         'Koneksi Internet Terputus (Offline)',
-        'Perangkat beralih ke Mode Offline. Presensi baru akan otomatis disimpan sementara ke localStorage.',
+        'Perangkat beralih ke Mode Offline. Presensi baru akan otomatis disimpan sementara ke penyimpanan lokal.',
         'Peringatan',
         currentUser,
         'Network Offline Event'
@@ -481,7 +481,7 @@ export default function App() {
 
     // If online on initial load and there are pending items, sync them
     if (typeof navigator !== 'undefined' && navigator.onLine && getOfflineQueue().length > 0) {
-      triggerSyncToFirebase();
+      triggerSyncToDatabase();
     }
 
     return () => {
@@ -918,7 +918,7 @@ export default function App() {
         isGoogleConnected={isGoogleConnected}
         isOnline={isOnline}
         pendingOfflineCount={pendingOfflineQueue.length}
-        onTriggerSync={triggerSyncToFirebase}
+        onTriggerSync={triggerSyncToDatabase}
         isSyncing={isSyncing}
         isDarkMode={isDarkMode}
         onToggleDarkMode={handleToggleDarkMode}
@@ -978,7 +978,7 @@ export default function App() {
               onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
               isOnline={isOnline}
               pendingOfflineCount={pendingOfflineQueue.length}
-              onTriggerSync={triggerSyncToFirebase}
+              onTriggerSync={triggerSyncToDatabase}
               isSyncing={isSyncing}
               onSelectSiswaDetail={handleOpenSiswaDetail}
             />

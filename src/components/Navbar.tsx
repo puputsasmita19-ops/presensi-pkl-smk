@@ -207,7 +207,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* User Role Badge & Actions */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
 
-          {/* Internet Connection Status & Offline Firebase Sync Indicator */}
+          {/* Internet Connection Status & Offline Database Sync Indicator */}
           {isOnline ? (
             pendingOfflineCount > 0 ? (
               <button
@@ -216,7 +216,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={onTriggerSync}
                 disabled={isSyncing}
                 className="h-8 sm:h-9 px-1.5 sm:px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-medium cursor-pointer transition shadow-xs flex items-center gap-1 shrink-0 active:scale-95"
-                title="Ada data presensi offline di localStorage. Klik untuk menyinkronkan ke Firebase Firestore sekarang."
+                title="Ada data presensi offline di cache lokal. Klik untuk menyinkronkan ke Database MySQL/TiDB sekarang."
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-amber-400 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline text-[11px] font-semibold">
@@ -230,7 +230,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div
                 id="indicator-internet-online"
                 className="h-8 sm:h-9 px-1.5 sm:px-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-medium cursor-default select-none flex items-center justify-center gap-1 shrink-0"
-                title="Koneksi Internet Stabil (Terhubung ke Firebase Firestore)"
+                title="Koneksi Internet Stabil (Terhubung ke Database MySQL/TiDB Cloud & Drive)"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 <Wifi className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
