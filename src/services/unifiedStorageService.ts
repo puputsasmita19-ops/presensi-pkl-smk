@@ -1,6 +1,11 @@
 import { Presensi, KunjunganGuru, Siswa } from '../types';
 import { getCachedAccessToken, isGoogleDriveLinked } from './googleAuth';
-import { uploadFileToDrive, getOrCreatePklFolder } from './googleDrive';
+import {
+  uploadFileToDrive,
+  getOrCreatePklFolder,
+  getOrCreateSiswaPresensiFolder,
+  getOrCreateGuruPresensiFolder,
+} from './googleDrive';
 import { saveToOfflineQueue } from './offlinePresensiService';
 import { savePresensiToIndexedDb, saveKunjunganToIndexedDb } from './indexedDbService';
 import { savePresensiToFirestore, saveKunjunganToFirestore } from './firestoreService';
@@ -139,7 +144,7 @@ export async function uploadPresensiPhotoToDrive(
   }
 
   try {
-    const folderId = await getOrCreatePklFolder();
+    const folderId = await getOrCreateSiswaPresensiFolder();
     const uploaded = await uploadFileToDrive(
       payload.fileName,
       payload.blob,
@@ -184,7 +189,7 @@ export async function uploadKunjunganPhotoToDrive(
   }
 
   try {
-    const folderId = await getOrCreatePklFolder();
+    const folderId = await getOrCreateGuruPresensiFolder();
     const uploaded = await uploadFileToDrive(
       payload.fileName,
       payload.blob,

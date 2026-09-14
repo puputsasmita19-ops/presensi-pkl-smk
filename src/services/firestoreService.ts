@@ -360,6 +360,8 @@ export async function seedInitialDataToFirestore(data: {
 export interface GoogleDriveConfig {
   accessToken?: string;
   folderId?: string;
+  folderIdSiswa?: string;
+  folderIdGuru?: string;
   userEmail?: string;
   userName?: string;
   userPhoto?: string;

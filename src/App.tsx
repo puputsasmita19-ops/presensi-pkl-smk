@@ -56,7 +56,11 @@ import {
   setConnectedGoogleUser,
   isGoogleDriveLinked,
 } from './services/googleAuth';
-import { setCachedPklFolderId } from './services/googleDrive';
+import {
+  setCachedPklFolderId,
+  setCachedFolderSiswaId,
+  setCachedFolderGuruId,
+} from './services/googleDrive';
 import {
   getOfflineQueue,
   saveToOfflineQueue,
@@ -478,6 +482,12 @@ export default function App() {
         if (cfg.folderId) {
           setCachedPklFolderId(cfg.folderId);
         }
+        if (cfg.folderIdSiswa) {
+          setCachedFolderSiswaId(cfg.folderIdSiswa);
+        }
+        if (cfg.folderIdGuru) {
+          setCachedFolderGuruId(cfg.folderIdGuru);
+        }
         if (cfg.userEmail) {
           setConnectedGoogleUser({
             displayName: cfg.userName || 'Pengguna Google Drive',
@@ -636,8 +646,8 @@ export default function App() {
           const total = res.uploadedPresensi + res.uploadedKunjungan;
           addLog(
             'Google Drive',
-            'Auto-Sync Foto ke Google Drive Berhasil',
-            `Otomatis mengunggah ${total} foto (${res.uploadedPresensi} presensi, ${res.uploadedKunjungan} supervisi) ke Google Drive Folder "Presensi & Jurnal PKL SMK".`,
+            'Auto-Sync Foto Terpisah ke Google Drive Berhasil',
+            `Otomatis mengunggah ${total} foto (${res.uploadedPresensi} foto siswa ke folder "Foto Presensi Siswa", ${res.uploadedKunjungan} foto supervisi ke folder "Foto Monitoring & Kunjungan Guru").`,
             'Sukses',
             currentUser,
             'Background Auto-Sync'

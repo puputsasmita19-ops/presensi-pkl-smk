@@ -14,8 +14,14 @@ export interface DriveFileItem {
 }
 
 export const DEFAULT_PKL_FOLDER_ID = '16J6-5viU-CVCconsfFTNtrMCNMx-0HNz';
-let cachedPklFolderId: string | null = null;
+export const FOLDER_NAME_SISWA = 'Foto Presensi Siswa';
+export const FOLDER_NAME_GURU = 'Foto Monitoring & Kunjungan Guru';
 
+let cachedPklFolderId: string | null = null;
+let cachedFolderSiswaId: string | null = null;
+let cachedFolderGuruId: string | null = null;
+
+// ================= FOLDER UTAMA PKL =================
 export const getCachedPklFolderId = (): string => {
   if (cachedPklFolderId && cachedPklFolderId.trim()) return cachedPklFolderId.trim();
   if (typeof window !== 'undefined') {
@@ -48,8 +54,178 @@ export const resetCachedPklFolderId = () => {
   }
 };
 
+// ================= FOLDER KHUSUS SISWA =================
+export const getCachedFolderSiswaId = (): string | null => {
+  if (cachedFolderSiswaId && cachedFolderSiswaId.trim()) return cachedFolderSiswaId.trim();
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pkl_gdrive_folder_siswa_id');
+      if (saved && saved.trim()) {
+        cachedFolderSiswaId = saved.trim();
+        return saved.trim();
+      }
+    } catch {}
+  }
+  return null;
+};
+
+export const setCachedFolderSiswaId = (folderId: string) => {
+  cachedFolderSiswaId = folderId.trim();
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('pkl_gdrive_folder_siswa_id', cachedFolderSiswaId);
+    } catch {}
+  }
+};
+
+export const resetCachedFolderSiswaId = () => {
+  cachedFolderSiswaId = null;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('pkl_gdrive_folder_siswa_id');
+    } catch {}
+  }
+};
+
+// ================= FOLDER KHUSUS GURU =================
+export const getCachedFolderGuruId = (): string | null => {
+  if (cachedFolderGuruId && cachedFolderGuruId.trim()) return cachedFolderGuruId.trim();
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pkl_gdrive_folder_guru_id');
+      if (saved && saved.trim()) {
+        cachedFolderGuruId = saved.trim();
+        return saved.trim();
+      }
+    } catch {}
+  }
+  return null;
+};
+
+export const setCachedFolderGuruId = (folderId: string) => {
+  cachedFolderGuruId = folderId.trim();
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('pkl_gdrive_folder_guru_id', cachedFolderGuruId);
+    } catch {}
+  }
+};
+
+export const resetCachedFolderGuruId = () => {
+  cachedFolderGuruId = null;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('pkl_gdrive_folder_guru_id');
+    } catch {}
+  }
+};
+
 /**
- * Buat atau cari folder di Google Drive
+ * Buat atau cari subfolder di dalam folder parent tertentu
+ */
+export const getOrCreateSubFolder = async (
+  folderName: string,
+  parentFolderId?: string
+): Promise<string> => {
+  const token = getCachedAccessToken();
+  if (!token) {
+    return parentFolderId || DEFAULT_PKL_FOLDER_ID;
+  }
+
+  const effectiveParent = parentFolderId || getCachedPklFolderId();
+
+  try {
+    let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+    if (effectiveParent && effectiveParent !== 'root') {
+      query += ` and '${effectiveParent}' in parents`;
+    }
+
+    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+      query
+    )}&fields=files(id,name,webViewLink)`;
+
+    const searchRes = await fetch(searchUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      if (searchData.files && searchData.files.length > 0) {
+        return searchData.files[0].id;
+      }
+    }
+
+    // Jika belum ada, buat subfolder baru
+    const bodyPayload: Record<string, any> = {
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+    };
+    if (effectiveParent && effectiveParent !== 'root') {
+      bodyPayload.parents = [effectiveParent];
+    }
+
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(bodyPayload),
+    });
+
+    if (createRes.ok) {
+      const created = await createRes.json();
+      if (created.id) {
+        // Berikan izin view agar dapat diakses
+        makeDriveFilePublic(created.id).catch(() => {});
+        return created.id;
+      }
+    }
+  } catch (e) {
+    console.warn(`Gagal mencari/membuat folder ${folderName}:`, e);
+  }
+
+  return effectiveParent || DEFAULT_PKL_FOLDER_ID;
+};
+
+/**
+ * Dapatkan atau buat Folder Khusus Foto Presensi Siswa
+ */
+export const getOrCreateSiswaPresensiFolder = async (): Promise<string> => {
+  const cached = getCachedFolderSiswaId();
+  if (cached && cached.trim()) {
+    return cached.trim();
+  }
+
+  const parentFolderId = await getOrCreatePklFolder();
+  const folderId = await getOrCreateSubFolder(FOLDER_NAME_SISWA, parentFolderId);
+  if (folderId) {
+    setCachedFolderSiswaId(folderId);
+    return folderId;
+  }
+  return parentFolderId;
+};
+
+/**
+ * Dapatkan atau buat Folder Khusus Foto Monitoring & Kunjungan Guru
+ */
+export const getOrCreateGuruPresensiFolder = async (): Promise<string> => {
+  const cached = getCachedFolderGuruId();
+  if (cached && cached.trim()) {
+    return cached.trim();
+  }
+
+  const parentFolderId = await getOrCreatePklFolder();
+  const folderId = await getOrCreateSubFolder(FOLDER_NAME_GURU, parentFolderId);
+  if (folderId) {
+    setCachedFolderGuruId(folderId);
+    return folderId;
+  }
+  return parentFolderId;
+};
+
+/**
+ * Buat atau cari folder utama di Google Drive
  */
 export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL SMK'): Promise<string> => {
   const current = getCachedPklFolderId();
