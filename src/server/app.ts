@@ -594,7 +594,54 @@ apiRouter.post("/db/test-and-save", async (req, res) => {
       });
 
       const start = Date.now();
-      await testPool.query("SELECT 1 + 1 AS test_res");
+      try {
+        await testPool.query("SELECT 1 + 1 AS test_res");
+      } catch (firstErr: any) {
+        // Jika database belum dibuat di TiDB Cloud / MySQL (Unknown database)
+        if (
+          firstErr?.code === "ER_BAD_DB_ERROR" ||
+          firstErr?.message?.includes("Unknown database")
+        ) {
+          try {
+            await testPool.end();
+          } catch {}
+          
+          // Buat koneksi sementara tanpa database spesifik untuk membuat database baru
+          const rootPool = mysql.createPool({
+            host: testConfig.host,
+            user: testConfig.user,
+            password: testConfig.password,
+            port: testConfig.port,
+            waitForConnections: true,
+            connectionLimit: 2,
+            queueLimit: 0,
+            connectTimeout: 7000,
+            ssl: testConfig.ssl,
+          });
+
+          await rootPool.query(`CREATE DATABASE IF NOT EXISTS \`${testConfig.database.replace(/`/g, "")}\``);
+          try {
+            await rootPool.end();
+          } catch {}
+
+          // Hubungkan kembali ke database yang baru dibuat
+          testPool = mysql.createPool({
+            host: testConfig.host,
+            user: testConfig.user,
+            password: testConfig.password,
+            database: testConfig.database,
+            port: testConfig.port,
+            waitForConnections: true,
+            connectionLimit: 3,
+            queueLimit: 0,
+            connectTimeout: 7000,
+            ssl: testConfig.ssl,
+          });
+          await testPool.query("SELECT 1 + 1 AS test_res");
+        } else {
+          throw firstErr;
+        }
+      }
       const latencyMs = Date.now() - start;
 
       // Inisialisasi seluruh tabel pada database baru secara aman

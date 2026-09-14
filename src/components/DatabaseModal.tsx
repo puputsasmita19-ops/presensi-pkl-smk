@@ -473,7 +473,7 @@ MYSQL_SSL=true
               </div>
 
               {/* Template Buttons */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold text-slate-500">Template Cepat:</span>
                 <button
                   type="button"
@@ -489,6 +489,20 @@ MYSQL_SSL=true
                 >
                   💻 Localhost (XAMPP)
                 </button>
+              </div>
+
+              {/* Panduan Tombol Run & TiDB Cloud */}
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-200 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>Tentang Tombol "Run" & Kredensial di TiDB Cloud:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                  <li><strong>Tombol "Run" di TiDB Cloud:</strong> Ini adalah SQL Editor di web TiDB untuk menjalankan query manual. <strong>Tidak wajib dijalankan</strong> karena aplikasi ini otomatis membuat tabel sendiri begitu terhubung.</li>
+                  <li><strong>Username:</strong> Di TiDB Cloud, username berbentuk <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">xxxx.root</code> (dilihat dari menu <em>Connect</em>), bukan sekadar <em>root</em>.</li>
+                  <li><strong>Nama Database:</strong> Anda bisa isi <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">test</code> (database bawaan TiDB) atau <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">db_presensi_pkl</code>.</li>
+                  <li><strong>SSL:</strong> Wajib dicentang aktif untuk TiDB Cloud.</li>
+                </ul>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
