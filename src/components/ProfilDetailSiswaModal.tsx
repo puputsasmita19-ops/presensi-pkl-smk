@@ -169,45 +169,45 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
     >
       <div className="bg-white dark:bg-slate-900 w-full max-w-5xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] transition-all">
         {/* MODAL HEADER */}
-        <div className="px-6 py-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/80">
+        <div className="shrink-0 px-5 sm:px-6 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 flex items-center justify-center font-bold shadow-xs shrink-0">
-              <User className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 flex items-center justify-center font-bold shadow-xs shrink-0">
+              <User className="w-4.5 h-4.5" />
             </div>
             <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                   Detail Profil &amp; Rekap Siswa PKL
                 </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
                   NIS: {siswa.nis}
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Siswa Aktif PKL
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Siswa Aktif
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {siswa.nama_lengkap} &bull; {siswa.kelas} ({siswa.jurusan})
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleExportPDF}
-              className="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-xs transition cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-xs transition cursor-pointer"
               title="Unduh Rekap Presensi Siswa format PDF"
             >
-              <Download className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+              <Download className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
               <span>Unduh PDF</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition cursor-pointer"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition cursor-pointer"
               aria-label="Tutup Modal"
             >
               <X className="w-5 h-5" />
@@ -215,16 +215,16 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
           </div>
         </div>
 
-        {/* HERO / IDENTITY BANNER - LEGA & LUAS */}
-        <div className="px-6 py-6 bg-gradient-to-r from-slate-900 via-slate-850 to-sky-950 text-white relative overflow-hidden border-b border-slate-800">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+        {/* HERO / IDENTITY BANNER - FULLY VISIBLE */}
+        <div className="shrink-0 px-5 sm:px-6 py-4.5 bg-gradient-to-r from-slate-900 via-slate-850 to-sky-950 text-white relative border-b border-slate-800">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+          <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             {/* Left: Avatar & Info */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4.5 flex-1 min-w-0">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
               {/* Student Photo */}
               <div className="relative group shrink-0">
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-800 border-2 border-white/20 shadow-xl flex items-center justify-center">
+                <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-slate-800 ring-2 ring-white/20 shadow-lg flex items-center justify-center">
                   {displayPhoto ? (
                     <img
                       src={displayPhoto}
@@ -233,7 +233,7 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white font-extrabold text-2xl">
+                    <div className="w-full h-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white font-extrabold text-xl">
                       {siswa.nama_lengkap.charAt(0)}
                     </div>
                   )}
@@ -248,50 +248,50 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
                         subCaption: `${siswa.nis} • ${siswa.kelas}`,
                       })
                     }
-                    className="absolute bottom-1 right-1 p-1.5 bg-slate-900/80 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-xs flex items-center gap-1 shadow-md cursor-pointer"
+                    className="absolute bottom-1 right-1 p-1 bg-slate-900/90 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-[10px] flex items-center gap-1 shadow-md cursor-pointer"
                     title="Perbesar Foto"
                   >
-                    <Eye className="w-3.5 h-3.5" />
+                    <Eye className="w-3 h-3" />
                   </button>
                 )}
               </div>
 
               {/* Student Bio Info */}
-              <div className="space-y-2.5 min-w-0 flex-1">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight truncate">
+              <div className="space-y-1.5 min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug truncate">
                     {siswa.nama_lengkap}
                   </h2>
                 </div>
 
                 {/* Badges Info (Kelas, Jurusan, Email) */}
-                <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 text-sky-200 border border-white/15 font-medium">
-                    <GraduationCap className="w-3.5 h-3.5 text-sky-400" />
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/10 text-sky-200 border border-white/15 text-[11px] font-medium">
+                    <GraduationCap className="w-3 h-3 text-sky-400" />
                     <span>{siswa.kelas}</span>
                   </span>
 
-                  <span className="inline-flex items-center px-3 py-1 rounded-lg bg-white/10 text-slate-200 border border-white/15 font-medium">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-white/10 text-slate-200 border border-white/15 text-[11px] font-medium">
                     {siswa.jurusan}
                   </span>
 
                   {siswa.email && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/5 text-slate-300 border border-white/10 font-mono text-[11px]">
-                      <Mail className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/5 text-slate-300 border border-white/10 font-mono text-[11px]">
+                      <Mail className="w-3 h-3 text-sky-400" />
                       <span>{siswa.email}</span>
                     </span>
                   )}
                 </div>
 
                 {/* DUDI & Guru Pembimbing */}
-                <div className="flex items-center gap-2.5 flex-wrap text-xs pt-0.5">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 text-sky-200 border border-sky-400/30">
-                    <Building2 className="w-4 h-4 text-sky-400 shrink-0" />
+                <div className="flex items-center gap-2 flex-wrap text-xs pt-0.5">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-sky-500/20 text-sky-200 border border-sky-400/30 text-[11px]">
+                    <Building2 className="w-3 h-3 text-sky-400 shrink-0" />
                     <span>DUDI: <strong>{assignedDUDI?.nama_instansi || 'Belum Ditempatkan'}</strong></span>
                   </span>
                   {assignedGuru && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 text-slate-300 border border-white/10">
-                      <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/5 text-slate-300 border border-white/10 text-[11px]">
+                      <ShieldCheck className="w-3 h-3 text-indigo-400 shrink-0" />
                       <span>Pembimbing: <strong>{assignedGuru.nama_guru}</strong></span>
                     </span>
                   )}
@@ -300,57 +300,57 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
             </div>
 
             {/* Right: Action Contacts */}
-            <div className="flex sm:flex-row md:flex-col gap-2.5 shrink-0 w-full md:w-44 pt-2 md:pt-0">
+            <div className="flex sm:flex-row md:flex-col gap-2 shrink-0 w-full md:w-36 pt-1 md:pt-0">
               <button
                 type="button"
                 onClick={handleWhatsAppOrtu}
-                className="flex-1 md:flex-initial px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-95"
+                className="flex-1 md:flex-initial px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs cursor-pointer active:scale-95"
                 title="Kirim Pesan Notifikasi Rekap ke Orang Tua"
               >
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-3.5 h-3.5" />
                 <span>WA Ortu</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleWhatsAppSiswa}
-                className="flex-1 md:flex-initial px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 font-bold text-xs flex items-center justify-center gap-2 transition border border-slate-700 cursor-pointer active:scale-95"
+                className="flex-1 md:flex-initial px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 font-bold text-xs flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer active:scale-95"
                 title="Kirim Pesan Langsung ke WhatsApp Siswa"
               >
-                <Phone className="w-4 h-4" />
+                <Phone className="w-3.5 h-3.5" />
                 <span>WA Siswa</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* SPACIOUS NAVIGATION TABS */}
-        <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 flex items-center gap-2 sm:gap-3 overflow-x-auto shrink-0 shadow-2xs">
+        {/* COMPACT SEGMENTED NAVIGATION TABS */}
+        <div className="shrink-0 px-4 sm:px-6 py-2 bg-slate-100/90 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1 sm:gap-1.5 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('ringkasan')}
-            className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap cursor-pointer ${
+            className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'ringkasan'
-                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/70 border border-transparent'
+                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-750/60 border border-transparent'
             }`}
           >
-            <Clock className={`w-4 h-4 ${activeTab === 'ringkasan' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
+            <Clock className={`w-3.5 h-3.5 ${activeTab === 'ringkasan' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
             <span>Ringkasan Kehadiran &amp; Profil</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('kalender')}
-            className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap cursor-pointer ${
+            className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'kalender'
-                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/70 border border-transparent'
+                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-750/60 border border-transparent'
             }`}
           >
-            <CalendarDays className={`w-4 h-4 ${activeTab === 'kalender' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
+            <CalendarDays className={`w-3.5 h-3.5 ${activeTab === 'kalender' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
             <span>Kalender Presensi Bulanan</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800">
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800">
               Visual
             </span>
           </button>
@@ -358,15 +358,15 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('presensi')}
-            className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap cursor-pointer ${
+            className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'presensi'
-                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/70 border border-transparent'
+                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-750/60 border border-transparent'
             }`}
           >
-            <Calendar className={`w-4 h-4 ${activeTab === 'presensi' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
+            <Calendar className={`w-3.5 h-3.5 ${activeTab === 'presensi' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
             <span>Histori Presensi</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'presensi' ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-750 text-slate-700 dark:text-slate-300'}`}>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === 'presensi' ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}`}>
               {studentPresensiList.length}
             </span>
           </button>
@@ -374,13 +374,13 @@ export const ProfilDetailSiswaModal: React.FC<ProfilDetailSiswaModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('dudi')}
-            className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap cursor-pointer ${
+            className={`py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'dudi'
-                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/70 border border-transparent'
+                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-750/60 border border-transparent'
             }`}
           >
-            <Building2 className={`w-4 h-4 ${activeTab === 'dudi' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
+            <Building2 className={`w-3.5 h-3.5 ${activeTab === 'dudi' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
             <span>Tempat PKL &amp; Geofence</span>
           </button>
         </div>
