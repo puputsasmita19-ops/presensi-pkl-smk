@@ -19,7 +19,6 @@ import {
   ShieldCheck,
   UserCheck,
   ChevronRight,
-  Database,
   RefreshCw,
   MapPin,
 } from 'lucide-react';
@@ -227,16 +226,6 @@ export const StatistikDataAdmin: React.FC<StatistikDataAdminProps> = ({
             >
               <Download className="w-3.5 h-3.5 text-sky-300" />
               <span>Rekap Laporan</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onNavigateTab('master')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
-              title="Kelola Master Data Siswa, Guru & DUDI"
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span>Master Data</span>
             </button>
 
             <button
