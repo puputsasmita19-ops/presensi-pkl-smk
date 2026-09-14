@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   getCachedAccessToken,
   setCachedAccessToken,
   requestGoogleDriveToken,
+  renderGoogleSignInButton,
   logoutGoogle,
   getSavedGoogleClientId,
   setGoogleClientId,
@@ -17,6 +18,7 @@ import {
   resetCachedPklFolderId,
   DriveFileItem,
 } from '../services/googleDrive';
+import { uploadPresensiPhotoToDrive } from '../services/unifiedStorageService';
 import {
   CompressionPreset,
   getSavedCompressionPreset,
@@ -43,6 +45,7 @@ import {
   User as UserIcon,
   ChevronDown,
   ChevronUp,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface GoogleDriveModalProps {
@@ -92,6 +95,20 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       if (token) {
         fetchOAuthFiles();
         loadPklFolderInfo();
+      } else {
+        setTimeout(() => {
+          renderGoogleSignInButton('gsi-official-button-container', (profile) => {
+            setIsOAuthConnected(true);
+            setConnectedUser(profile);
+            if (onConnectionChange) onConnectionChange(true);
+            setStatusMsg({
+              type: 'success',
+              text: `Berhasil login dengan ${profile.displayName} (${profile.email}). Akun Google aktif!`,
+            });
+            loadPklFolderInfo();
+            fetchOAuthFiles();
+          }, activeClientId);
+        }, 150);
       }
     }
   }, [isOpen]);
@@ -174,6 +191,59 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     setManualTokenInput('');
     await loadPklFolderInfo();
     await fetchOAuthFiles();
+  };
+
+  const handleSyncAllPhotosToDrive = async () => {
+    setIsLoading(true);
+    setStatusMsg(null);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      const folderId = await getOrCreatePklFolder();
+      const presensiWithPhotos = presensiList.filter(
+        (p) => p.foto_selfie && p.foto_selfie.startsWith('data:image')
+      );
+
+      if (presensiWithPhotos.length === 0) {
+        setStatusMsg({
+          type: 'warning',
+          text: 'Tidak ada foto presensi selfie yang perlu disinkronkan ke Google Drive.',
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      for (const p of presensiWithPhotos) {
+        const student = siswaList.find((s) => s.id_siswa === p.id_siswa);
+        const sName = student?.nama_lengkap || 'Siswa';
+        try {
+          const res = await uploadPresensiPhotoToDrive(p, sName);
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        }
+      }
+
+      await fetchOAuthFiles();
+      setStatusMsg({
+        type: successCount > 0 ? 'success' : 'warning',
+        text: `Sinkronisasi Foto Selesai: ${successCount} foto selfie berhasil diunggah ke Google Drive (Folder: Presensi & Jurnal PKL SMK)${
+          failCount > 0 ? `, ${failCount} gagal.` : '.'
+        }`,
+      });
+    } catch (err: any) {
+      setStatusMsg({
+        type: 'error',
+        text: err?.message || 'Gagal menyinkronkan foto ke Google Drive.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleBackupToDrive = async () => {
@@ -384,7 +454,19 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                   </span>
                 </div>
 
-                {/* Tombol Resmi Sign In with Google */}
+                {/* Tombol Resmi Google Identity Services (Mematuhi Kebijakan Google 100%) */}
+                <div className="flex flex-col items-center justify-center py-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+                  <div id="gsi-official-button-container" className="min-h-[44px] flex items-center justify-center w-full"></div>
+                </div>
+
+                <div className="relative flex items-center justify-center">
+                  <div className="border-t border-slate-200 dark:border-slate-700 w-full"></div>
+                  <span className="bg-slate-50 dark:bg-slate-800 px-2 text-[10px] text-slate-400 uppercase font-bold tracking-wider absolute">
+                    atau
+                  </span>
+                </div>
+
+                {/* Tombol Resmi Sign In with Google Popup */}
                 <button
                   type="button"
                   onClick={handleConnectOAuth}
@@ -398,8 +480,31 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
                     <path fill="none" d="M0 0h48v48H0z"></path>
                   </svg>
-                  <span>{isLoading ? 'Menghubungkan ke Google...' : 'Hubungkan Akun Google Drive (OAuth)'}</span>
+                  <span>{isLoading ? 'Menghubungkan ke Google...' : 'Login dengan Akun Google (Pop-up)'}</span>
                 </button>
+
+                {/* Panduan jika muncul Akses Diblokir */}
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/25 border border-amber-200 dark:border-amber-800/40 text-[11px] text-amber-900 dark:text-amber-200 space-y-1.5">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Muncul &quot;Akses diblokir: Error Otorisasi&quot;?</span>
+                  </div>
+                  <p className="leading-relaxed text-[11px]">
+                    Hal ini terjadi jika aplikasi dalam mode <em>Testing</em> di Google Cloud Console dan email Anda belum didaftarkan sebagai <strong>Test User</strong>, atau domain URL aplikasi belum dimasukkan di <strong>Authorized JavaScript origins</strong>.
+                  </p>
+                  <div className="pt-1 flex items-center justify-between">
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400">
+                      Solusi: Buka Pengaturan Lanjutan untuk mengisi Client ID Anda atau Access Token.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedOAuth(true)}
+                      className="text-[11px] font-bold text-sky-700 dark:text-sky-300 underline cursor-pointer hover:text-sky-800"
+                    >
+                      Buka Pengaturan
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -491,9 +596,20 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                       Simpan
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-500">
-                    Bawaan Sistem: <code>{PROVISIONED_CLIENT_ID || 'Client ID Terpasang'}</code>
-                  </p>
+                  <div className="p-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1 mt-2">
+                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                      Cara Mengatasi &quot;Error 403: access_denied / Error Otorisasi&quot; di Google Cloud:
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1 pl-1">
+                      <li>Buka <strong>Google Cloud Console</strong> &gt; <strong>APIs &amp; Services</strong> &gt; <strong>OAuth consent screen</strong>.</li>
+                      <li>Di bagian <strong>Test Users</strong>, klik <strong>+ ADD USERS</strong> dan masukkan email Google Anda (<code>puputsasmita19@gmail.com</code>).</li>
+                      <li>Di menu <strong>Credentials</strong> &gt; Edit OAuth 2.0 Client ID Anda:</li>
+                      <li className="pl-4 font-mono text-[10px] text-sky-600 dark:text-sky-400 break-all">
+                        Tambahkan ke Authorized JavaScript origins: {typeof window !== 'undefined' ? window.location.origin : 'URL Aplikasi Anda'}
+                      </li>
+                      <li>Salin Client ID dari Google Cloud Console dan tempel di input di atas, lalu klik <strong>Simpan</strong>.</li>
+                    </ol>
+                  </div>
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
@@ -613,6 +729,32 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                 );
               })}
             </div>
+          </div>
+
+          {/* Sinkronkan Foto Presensi ke Drive */}
+          <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="font-bold text-emerald-950 dark:text-emerald-200 text-xs flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Unggah / Sinkronkan Semua Foto Selfie ke Drive</span>
+              </h4>
+              <p className="text-[11px] text-emerald-800/80 dark:text-slate-400 mt-0.5">
+                Unggah semua foto selfie presensi yang tersimpan di perangkat ke folder Google Drive akun Anda.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSyncAllPhotosToDrive}
+              disabled={isLoading || !isOAuthConnected}
+              className={`px-3.5 py-2 rounded-xl font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 ${
+                isOAuthConnected
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>{isLoading ? 'Mengunggah...' : 'Unggah Foto ke Drive'}</span>
+            </button>
           </div>
 
           {/* Cadangan Data PKL */}

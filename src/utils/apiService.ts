@@ -1,4 +1,4 @@
-// Layanan integrasi API MySQL Online & Vercel Serverless
+// Layanan integrasi API MySQL Online, TiDB Cloud, & Vercel Serverless
 import { Siswa, DUDI, Presensi, JurnalHarian, KunjunganGuru } from '../types';
 
 export interface DbStatusResponse {
@@ -24,6 +24,45 @@ export interface DbConfigPayload {
   ssl?: boolean;
 }
 
+const STORAGE_KEY_DB_CONFIG = 'pkl_active_db_config';
+
+export function getSavedDbConfig(): DbConfigPayload | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DB_CONFIG);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return null;
+}
+
+export function saveDbConfigToStorage(config: DbConfigPayload | null) {
+  try {
+    if (config) {
+      localStorage.setItem(STORAGE_KEY_DB_CONFIG, JSON.stringify(config));
+    } else {
+      localStorage.removeItem(STORAGE_KEY_DB_CONFIG);
+    }
+  } catch {}
+}
+
+// Helper headers yang meneruskan kredensial ke Vercel Serverless jika belum diset di Environment Variables
+function getDbHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const config = getSavedDbConfig();
+  if (config && config.host && config.user && config.database) {
+    headers['x-mysql-host'] = config.host;
+    headers['x-mysql-user'] = config.user;
+    headers['x-mysql-database'] = config.database;
+    headers['x-mysql-password'] = config.password || '';
+    headers['x-mysql-port'] = String(config.port || 3306);
+    headers['x-mysql-ssl'] = config.ssl ? 'true' : 'false';
+  }
+  return headers;
+}
+
 // Helper aman parsing JSON (mencegah error jika server proxy mengembalikan HTML 404/500)
 async function safeJsonParse<T>(res: Response): Promise<T | null> {
   try {
@@ -44,7 +83,9 @@ async function safeJsonParse<T>(res: Response): Promise<T | null> {
 
 export const checkDbConnection = async (): Promise<DbStatusResponse> => {
   try {
-    const res = await fetch('/api/db/status');
+    const res = await fetch('/api/db/status', {
+      headers: getDbHeaders(),
+    });
     const data = await safeJsonParse<DbStatusResponse>(res);
     if (!res.ok || !data) {
       return {
@@ -81,6 +122,9 @@ export const testAndSaveDbConfig = async (
         success: false,
         error: data?.error || `Gagal menyambung ke server (HTTP ${res.status})`,
       };
+    }
+    if (data.success) {
+      saveDbConfigToStorage(config);
     }
     return data;
   } catch (err: any) {
@@ -120,7 +164,7 @@ export const uploadPhotoToServer = async (
   try {
     const res = await fetch('/api/upload-photo', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getDbHeaders(),
       body: JSON.stringify({ photo: photoBase64, id, prefix }),
     });
     const data = await safeJsonParse<{ success: boolean; url?: string; fileName?: string; error?: string }>(res);
@@ -137,7 +181,7 @@ export const syncAllDataToDb = async (payload: SyncAllPayload): Promise<SyncAllR
   try {
     const res = await fetch('/api/db/sync-all', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getDbHeaders(),
       body: JSON.stringify(payload),
     });
     const data = await safeJsonParse<SyncAllResult>(res);
@@ -159,7 +203,9 @@ export const syncAllDataToDb = async (payload: SyncAllPayload): Promise<SyncAllR
 // SISWA
 export const fetchSiswaFromDb = async (): Promise<Siswa[] | null> => {
   try {
-    const res = await fetch('/api/siswa');
+    const res = await fetch('/api/siswa', {
+      headers: getDbHeaders(),
+    });
     if (!res.ok) return null;
     return await safeJsonParse<Siswa[]>(res);
   } catch {
@@ -171,7 +217,7 @@ export const saveSiswaToDb = async (siswa: Siswa): Promise<boolean> => {
   try {
     const res = await fetch('/api/siswa', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getDbHeaders(),
       body: JSON.stringify(siswa),
     });
     return res.ok;
@@ -184,6 +230,7 @@ export const deleteSiswaFromDb = async (id_siswa: string): Promise<boolean> => {
   try {
     const res = await fetch(`/api/siswa/${id_siswa}`, {
       method: 'DELETE',
+      headers: getDbHeaders(),
     });
     return res.ok;
   } catch {
@@ -194,7 +241,9 @@ export const deleteSiswaFromDb = async (id_siswa: string): Promise<boolean> => {
 // DUDI
 export const fetchDudiFromDb = async (): Promise<DUDI[] | null> => {
   try {
-    const res = await fetch('/api/dudi');
+    const res = await fetch('/api/dudi', {
+      headers: getDbHeaders(),
+    });
     if (!res.ok) return null;
     return await safeJsonParse<DUDI[]>(res);
   } catch {
@@ -206,7 +255,7 @@ export const saveDudiToDb = async (dudi: DUDI): Promise<boolean> => {
   try {
     const res = await fetch('/api/dudi', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getDbHeaders(),
       body: JSON.stringify(dudi),
     });
     return res.ok;
@@ -218,7 +267,9 @@ export const saveDudiToDb = async (dudi: DUDI): Promise<boolean> => {
 // PRESENSI
 export const fetchPresensiFromDb = async (): Promise<Presensi[] | null> => {
   try {
-    const res = await fetch('/api/presensi');
+    const res = await fetch('/api/presensi', {
+      headers: getDbHeaders(),
+    });
     if (!res.ok) return null;
     return await safeJsonParse<Presensi[]>(res);
   } catch {
@@ -230,7 +281,7 @@ export const savePresensiToDb = async (presensi: Presensi): Promise<boolean> => 
   try {
     const res = await fetch('/api/presensi', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getDbHeaders(),
       body: JSON.stringify(presensi),
     });
     return res.ok;
@@ -242,7 +293,9 @@ export const savePresensiToDb = async (presensi: Presensi): Promise<boolean> => 
 // JURNAL
 export const fetchJurnalFromDb = async (): Promise<JurnalHarian[] | null> => {
   try {
-    const res = await fetch('/api/jurnal');
+    const res = await fetch('/api/jurnal', {
+      headers: getDbHeaders(),
+    });
     if (!res.ok) return null;
     return await safeJsonParse<JurnalHarian[]>(res);
   } catch {
@@ -254,7 +307,7 @@ export const saveJurnalToDb = async (jurnal: JurnalHarian): Promise<boolean> => 
   try {
     const res = await fetch('/api/jurnal', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getDbHeaders(),
       body: JSON.stringify(jurnal),
     });
     return res.ok;
@@ -266,7 +319,9 @@ export const saveJurnalToDb = async (jurnal: JurnalHarian): Promise<boolean> => 
 // KUNJUNGAN GURU
 export const fetchKunjunganFromDb = async (): Promise<KunjunganGuru[] | null> => {
   try {
-    const res = await fetch('/api/kunjungan');
+    const res = await fetch('/api/kunjungan', {
+      headers: getDbHeaders(),
+    });
     if (!res.ok) return null;
     return await safeJsonParse<KunjunganGuru[]>(res);
   } catch {
@@ -278,7 +333,7 @@ export const saveKunjunganToDb = async (kunjungan: KunjunganGuru): Promise<boole
   try {
     const res = await fetch('/api/kunjungan', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getDbHeaders(),
       body: JSON.stringify(kunjungan),
     });
     return res.ok;

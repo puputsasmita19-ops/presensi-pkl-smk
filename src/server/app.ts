@@ -35,6 +35,20 @@ try {
   console.warn("Info direktori data/uploads:", err);
 }
 
+// Middleware CORS & Keamanan Header untuk Vercel Serverless
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization, x-mysql-host, x-mysql-user, x-mysql-database, x-mysql-password, x-mysql-port, x-mysql-ssl"
+  );
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Layanan File Statis Foto Bukti Presensi & Kunjungan
 app.use("/api/uploads", express.static(UPLOADS_DIR));
 app.use("/uploads", express.static(UPLOADS_DIR));
@@ -136,14 +150,37 @@ function loadSavedRuntimeConfig(): DbConfig | null {
   return null;
 }
 
-export function parseDbConfig(): DbConfig | null {
-  // 1. Cek runtime saved config terlebih dahulu
+export function parseDbConfig(req?: express.Request): DbConfig | null {
+  // 1. Cek Header Request (Forwarded dari frontend saat di-hosting di Vercel tanpa environment variables)
+  if (req && req.headers) {
+    const hHost = (req.headers["x-mysql-host"] as string)?.trim();
+    const hUser = (req.headers["x-mysql-user"] as string)?.trim();
+    const hDatabase = (req.headers["x-mysql-database"] as string)?.trim();
+    const hPassword = (req.headers["x-mysql-password"] as string || "").trim();
+    const hPort = Number(req.headers["x-mysql-port"]) || 0;
+    const hSsl = req.headers["x-mysql-ssl"] === "true";
+
+    if (hHost && hUser && hDatabase) {
+      const isTiDB = hHost.includes("tidbcloud") || hPort === 4000;
+      return {
+        host: hHost,
+        user: hUser,
+        password: hPassword,
+        database: hDatabase,
+        port: hPort || (isTiDB ? 4000 : 3306),
+        ssl: hSsl || isTiDB ? { rejectUnauthorized: false } : undefined,
+        isTiDB,
+      };
+    }
+  }
+
+  // 2. Cek runtime saved config terlebih dahulu
   const runtime = loadSavedRuntimeConfig();
   if (runtime) {
     return runtime;
   }
 
-  // 2. Cek DATABASE_URL jika ada (misal dari TiDB Cloud, Aiven, Railway, dsb.)
+  // 3. Cek DATABASE_URL jika ada (misal dari TiDB Cloud, Aiven, Railway, dsb.)
   if (process.env.DATABASE_URL) {
     try {
       const parsed = new URL(process.env.DATABASE_URL);
@@ -163,7 +200,7 @@ export function parseDbConfig(): DbConfig | null {
     }
   }
 
-  // 3. Mendukung variabel MYSQL_* dan DB_*
+  // 4. Mendukung variabel MYSQL_* dan DB_*
   const host = process.env.MYSQL_HOST || process.env.DB_HOST;
   const user = process.env.MYSQL_USER || process.env.DB_USER;
   const database =
@@ -211,16 +248,22 @@ export function parseDbConfig(): DbConfig | null {
 
 // MySQL connection pool dengan optimasi serverless & reconnect
 let pool: mysql.Pool | null = null;
+let currentPoolKey: string = "";
 let tablesInitialized = false;
 
-export function getDbPool(): mysql.Pool | null {
-  const config = parseDbConfig();
+export function getDbPool(req?: express.Request): mysql.Pool | null {
+  const config = parseDbConfig(req);
   if (!config) {
     return null;
   }
 
-  if (!pool) {
+  const poolKey = `${config.host}:${config.port}:${config.user}:${config.database}`;
+
+  if (!pool || currentPoolKey !== poolKey) {
     try {
+      if (pool) {
+        try { pool.end(); } catch {}
+      }
       pool = mysql.createPool({
         host: config.host,
         user: config.user,
@@ -228,13 +271,14 @@ export function getDbPool(): mysql.Pool | null {
         database: config.database,
         port: config.port,
         waitForConnections: true,
-        connectionLimit: isServerless ? 5 : 10,
+        connectionLimit: isServerless ? 4 : 10,
         queueLimit: 0,
         connectTimeout: 8000,
         enableKeepAlive: true,
         keepAliveInitialDelay: 10000,
         ssl: config.ssl,
       });
+      currentPoolKey = poolKey;
 
       (pool as any)?.on?.("error", (err: any) => {
         console.warn("Peringatan Pool MySQL Terkoneksi:", err?.message || err);
@@ -453,7 +497,7 @@ apiRouter.post("/upload-photo", async (req, res) => {
 
 // 1. Status Koneksi MySQL / TiDB Cloud
 apiRouter.get("/db/status", async (req, res) => {
-  const config = parseDbConfig();
+  const config = parseDbConfig(req);
   if (!config) {
     const localDb = readLocalDb();
     return res.json({
@@ -473,7 +517,7 @@ apiRouter.get("/db/status", async (req, res) => {
   }
 
   try {
-    const db = getDbPool();
+    const db = getDbPool(req);
     if (!db) {
       throw new Error("Pool MySQL tidak dapat diinisialisasi.");
     }
@@ -690,7 +734,7 @@ apiRouter.post("/db/test-and-save", async (req, res) => {
 // Endpoint Mass Sync: Mengunggah data lokal ke MySQL sekaligus
 apiRouter.post("/db/sync-all", async (req, res) => {
   const { siswa = [], dudi = [], presensi = [], jurnal = [], kunjungan = [] } = req.body;
-  const db = getDbPool();
+  const db = getDbPool(req);
 
   // Selalu amankan ke local DB disk server
   const currentDb = readLocalDb();
@@ -955,7 +999,7 @@ apiRouter.post("/db/sync-all", async (req, res) => {
 
 // 2. SISWA: GET, POST & DELETE
 apiRouter.get("/siswa", async (req, res) => {
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const [rows]: any = await db.query("SELECT * FROM siswa ORDER BY nama_lengkap ASC");
@@ -1000,7 +1044,7 @@ apiRouter.post("/siswa", async (req, res) => {
   }
   writeLocalDb({ siswa: localDb.siswa });
 
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const query = `
@@ -1047,7 +1091,7 @@ apiRouter.delete("/siswa/:id", async (req, res) => {
   localDb.siswa = localDb.siswa.filter((x) => x.id_siswa !== req.params.id);
   writeLocalDb({ siswa: localDb.siswa });
 
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       await db.execute("DELETE FROM siswa WHERE id_siswa = ?", [req.params.id]);
@@ -1058,7 +1102,7 @@ apiRouter.delete("/siswa/:id", async (req, res) => {
 
 // 3. DUDI: GET & POST
 apiRouter.get("/dudi", async (req, res) => {
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const [rows]: any = await db.query("SELECT * FROM dudi ORDER BY nama_instansi ASC");
@@ -1101,7 +1145,7 @@ apiRouter.post("/dudi", async (req, res) => {
   }
   writeLocalDb({ dudi: localDb.dudi });
 
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const query = `
@@ -1146,7 +1190,7 @@ apiRouter.post("/dudi", async (req, res) => {
 
 // 4. PRESENSI: GET & POST
 apiRouter.get("/presensi", async (req, res) => {
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const [rows]: any = await db.query("SELECT * FROM presensi ORDER BY tanggal DESC, jam_masuk DESC");
@@ -1218,7 +1262,7 @@ apiRouter.post("/presensi", async (req, res) => {
     }
     writeLocalDb({ presensi: localDb.presensi });
 
-    const db = getDbPool();
+    const db = getDbPool(req);
     if (db) {
       try {
         const query = `
@@ -1285,7 +1329,7 @@ apiRouter.post("/presensi", async (req, res) => {
 
 // 5. JURNAL: GET & POST
 apiRouter.get("/jurnal", async (req, res) => {
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const [rows]: any = await db.query("SELECT * FROM jurnal ORDER BY tanggal DESC");
@@ -1328,7 +1372,7 @@ apiRouter.post("/jurnal", async (req, res) => {
   }
   writeLocalDb({ jurnal: localDb.jurnal });
 
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const query = `
@@ -1376,7 +1420,7 @@ apiRouter.post("/jurnal", async (req, res) => {
 
 // 6. KUNJUNGAN GURU: GET & POST
 apiRouter.get("/kunjungan", async (req, res) => {
-  const db = getDbPool();
+  const db = getDbPool(req);
   if (db) {
     try {
       const [rows]: any = await db.query("SELECT * FROM kunjungan ORDER BY tanggal DESC, jam_kunjungan DESC");
@@ -1444,7 +1488,7 @@ apiRouter.post("/kunjungan", async (req, res) => {
     }
     writeLocalDb({ kunjungan: localDb.kunjungan });
 
-    const db = getDbPool();
+    const db = getDbPool(req);
     if (db) {
       try {
         const query = `

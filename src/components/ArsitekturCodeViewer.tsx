@@ -50,45 +50,45 @@ export const ArsitekturCodeViewer: React.FC = () => {
             Arsitektur Sistem & Spesifikasi Teknis
           </span>
           <h2 className="text-base font-bold text-slate-900">
-            Sistem Presensi PKL SMK: Google Apps Script + Firebase + Fonnte + PWA
+            Sistem Presensi PKL SMK: MySQL / TiDB Cloud + Google Drive + Fonnte + PWA
           </h2>
           <p className="text-xs text-slate-600 leading-relaxed mt-1">
-            Arsitektur dirancang dengan pemisahan peran yang modular (Separation of Concerns). Google Apps Script bertindak sebagai backend RESTful proxy yang aman, menghubungkan frontend PWA mobile-first dengan database Firebase tanpa mengekspos credential rahasia ke browser.
+            Arsitektur dirancang dengan pemisahan peran yang modular (Separation of Concerns). Backend Express &amp; Vercel Serverless mengelola transaksi data relasional ke MySQL / TiDB Cloud, serta mengintegrasikan Google Drive API resmi untuk penyimpanan berkas dan foto selfie.
           </p>
         </div>
 
         {/* 4 Pillars Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          {/* Pillar 1: Backend GAS */}
+          {/* Pillar 1: Backend API */}
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1.5">
             <div className="w-8 h-8 rounded-lg bg-slate-900 text-sky-400 flex items-center justify-center font-bold">
               <Server className="w-4 h-4" />
             </div>
-            <strong className="text-slate-900 block font-bold">Backend (Google Apps Script)</strong>
+            <strong className="text-slate-900 block font-bold">Backend (Node.js &amp; Vercel API)</strong>
             <p className="text-[11px] text-slate-600">
-              Menggunakan metode <code>UrlFetchApp</code> untuk operasi CRUD REST API ke Firebase, validasi session token, dan perhitungan radius Haversine.
+              Menyediakan endpoint REST API teroptimasi, fallback otomatis ke penyimpanan lokal disk, dan integrasi Vercel Serverless.
             </p>
           </div>
 
-          {/* Pillar 2: Database Firebase */}
+          {/* Pillar 2: Database MySQL / TiDB */}
           <div className="bg-amber-50/70 rounded-xl p-3 border border-amber-200 space-y-1.5">
             <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold">
               <Database className="w-4 h-4" />
             </div>
-            <strong className="text-amber-950 block font-bold">Database (Firebase RTDB/Firestore)</strong>
+            <strong className="text-amber-950 block font-bold">Database (MySQL &amp; TiDB Cloud)</strong>
             <p className="text-[11px] text-amber-900">
-              Skema NoSQL berkonsep RDBMS menggunakan Foreign Key (<code>id_user</code>, <code>id_dudi</code>, <code>id_siswa</code>) & Security Rules RBAC.
+              Skema Relasional ACID standar (Foreign Keys: <code>id_user</code>, <code>id_dudi</code>, <code>id_siswa</code>), query terindeks, dan dukungan SSL.
             </p>
           </div>
 
-          {/* Pillar 3: Frontend PWA */}
+          {/* Pillar 3: Google Drive Cloud Storage */}
           <div className="bg-sky-50/70 rounded-xl p-3 border border-sky-200 space-y-1.5">
             <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold">
               <Smartphone className="w-4 h-4" />
             </div>
-            <strong className="text-sky-950 block font-bold">Frontend PWA & Geolocation</strong>
+            <strong className="text-sky-950 block font-bold">Penyimpanan Google Drive</strong>
             <p className="text-[11px] text-sky-900">
-              HTML5/CSS/JS responsif mobile-first, Camera WebRTC (video/canvas snapshot), GPS Geolocation API, & meta tag PWA installable.
+              Integrasi Google Drive API via OAuth Client ID untuk auto-upload foto presensi, kunjungan guru, dan pencadangan database.
             </p>
           </div>
 
@@ -109,7 +109,7 @@ export const ArsitekturCodeViewer: React.FC = () => {
       <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-3">
         <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
           <Layers className="w-4 h-4 text-slate-600" />
-          <span>Konsep Relasi Data RDBMS di Firebase (Foreign Keys)</span>
+          <span>Konsep Relasi Data RDBMS (Foreign Keys)</span>
         </h3>
         <div className="bg-slate-900 text-slate-200 rounded-xl p-4 font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
           <pre>{`[Users] (PK: id_user)

@@ -1,32 +1,8 @@
 /**
- * Layanan Autentikasi Google OAuth untuk Google Drive API
- * Mendukung Firebase Auth Google Provider dan Google Identity Services (GSI)
+ * Layanan Autentikasi Google OAuth Murni (Google Identity Services - GSI)
+ * untuk Integrasi Penyimpanan Google Drive API.
+ * Bebas dari Firebase & Mendukung Penyimpanan Google Drive Mandiri.
  */
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  getAuth,
-  signInWithPopup,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  User,
-  signOut,
-} from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
-
-// Inisialisasi Firebase App & Auth
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-
-// Provider dengan Scope Google Drive
-const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/drive.file');
-provider.addScope('https://www.googleapis.com/auth/drive');
-provider.setCustomParameters({
-  prompt: 'select_account consent',
-});
-
-// OAuth Client ID bawaan dari konfigurasi
-export const PROVISIONED_CLIENT_ID = (firebaseConfig as any)?.oAuthClientId || '';
 
 export interface GoogleUserProfile {
   displayName: string;
@@ -34,16 +10,19 @@ export interface GoogleUserProfile {
   photoURL: string;
 }
 
+// OAuth Client ID Default untuk Google Drive Access
+export const DEFAULT_GOOGLE_CLIENT_ID =
+  '46900601033-t50267uivq38l571ug1jrqntn3p9rdd7.apps.googleusercontent.com';
+
 let cachedAccessToken: string | null = null;
 let cachedUserProfile: GoogleUserProfile | null = null;
 
-// Ambil Client ID dari environment jika tersedia
+// Ambil Client ID dari environment atau setting pengguna
 export const getGoogleClientId = (): string => {
   return (
     (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID) ||
     (typeof window !== 'undefined' && (window as any).__GOOGLE_CLIENT_ID__) ||
-    PROVISIONED_CLIENT_ID ||
-    ''
+    DEFAULT_GOOGLE_CLIENT_ID
   );
 };
 
@@ -60,12 +39,12 @@ export const getSavedGoogleClientId = (): string => {
   if (typeof window !== 'undefined') {
     try {
       const custom = localStorage.getItem('pkl_google_client_id');
-      if (custom) return custom;
+      if (custom && custom.trim()) return custom.trim();
     } catch {}
   }
   const envId = getGoogleClientId();
-  if (envId) return envId;
-  return PROVISIONED_CLIENT_ID;
+  if (envId && envId.trim()) return envId.trim();
+  return DEFAULT_GOOGLE_CLIENT_ID;
 };
 
 export const getCachedAccessToken = (): string | null => {
@@ -136,62 +115,14 @@ export const setConnectedGoogleUser = (user: GoogleUserProfile | null) => {
 };
 
 export const logoutGoogle = async () => {
-  try {
-    await signOut(auth);
-  } catch {}
+  const token = getCachedAccessToken();
+  if (token && typeof window !== 'undefined' && (window as any).google?.accounts?.oauth2) {
+    try {
+      (window as any).google.accounts.oauth2.revoke(token, () => {});
+    } catch {}
+  }
   setCachedAccessToken(null);
   setConnectedGoogleUser(null);
-};
-
-/**
- * Listener status autentikasi Google Firebase
- */
-export const initAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
-  onAuthFailure?: () => void
-) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else {
-        if (onAuthFailure) onAuthFailure();
-      }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
-    }
-  });
-};
-
-/**
- * Login langsung dengan Google via Firebase Auth Popup
- */
-export const googleSignInWithPopup = async (): Promise<{ user: User; accessToken: string }> => {
-  try {
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    const token = credential?.accessToken;
-
-    if (!token) {
-      throw new Error('Tidak menerima access token dari Google OAuth.');
-    }
-
-    setCachedAccessToken(token);
-
-    if (result.user) {
-      setConnectedGoogleUser({
-        displayName: result.user.displayName || 'Pengguna Google',
-        email: result.user.email || '',
-        photoURL: result.user.photoURL || '',
-      });
-    }
-
-    return { user: result.user, accessToken: token };
-  } catch (error: any) {
-    console.error('Firebase Google Sign-In error:', error);
-    throw error;
-  }
 };
 
 /**
@@ -223,29 +154,110 @@ export const loadGsiScript = (): Promise<void> => {
 };
 
 /**
- * Meminta Google OAuth Access Token (Mencoba Firebase popup terlebih dahulu, lalu GSI token client)
+ * Parse Google ID Token (JWT) dari Google Sign-In
  */
-export const requestGoogleDriveToken = async (customClientId?: string): Promise<string> => {
-  // 1. Coba Firebase Auth Popup
+export const parseJwt = (token: string): any => {
   try {
-    const res = await googleSignInWithPopup();
-    if (res.accessToken) {
-      return res.accessToken;
-    }
-  } catch (firebaseErr: any) {
-    console.warn('Firebase signInWithPopup dialihkan ke GSI client jika perlu:', firebaseErr?.message);
-    // Jika pengguna sengaja membatalkan popup, langsung sampaikan
-    if (firebaseErr?.code === 'auth/popup-closed-by-user') {
-      throw new Error('Proses login Google dibatalkan oleh pengguna.');
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error('Gagal decode Google JWT ID Token:', e);
+    return null;
+  }
+};
+
+/**
+ * Inisialisasi Google One Tap / Sign In Button standar Google Identity Services
+ */
+export const renderGoogleSignInButton = async (
+  elementId: string,
+  onSuccess: (profile: GoogleUserProfile, idToken: string) => void,
+  customClientId?: string
+) => {
+  const clientId = (customClientId || getSavedGoogleClientId()).trim();
+  if (!clientId || typeof window === 'undefined') return;
+
+  await loadGsiScript();
+
+  if ((window as any).google?.accounts?.id) {
+    (window as any).google.accounts.id.initialize({
+      client_id: clientId,
+      auto_select: false,
+      cancel_on_tap_outside: true,
+      callback: (response: any) => {
+        if (response.credential) {
+          const payload = parseJwt(response.credential);
+          if (payload) {
+            const profile: GoogleUserProfile = {
+              displayName: payload.name || payload.given_name || 'Pengguna Google',
+              email: payload.email || '',
+              photoURL: payload.picture || '',
+            };
+            setConnectedGoogleUser(profile);
+            setCachedAccessToken(response.credential);
+            onSuccess(profile, response.credential);
+          }
+        }
+      },
+    });
+
+    const targetEl = document.getElementById(elementId);
+    if (targetEl) {
+      targetEl.innerHTML = '';
+      (window as any).google.accounts.id.renderButton(targetEl, {
+        theme: 'outline',
+        size: 'large',
+        type: 'standard',
+        shape: 'rectangular',
+        text: 'signin_with',
+        logo_alignment: 'left',
+        width: 320,
+      });
     }
   }
+};
 
-  // 2. Fallback ke Google Identity Services (GSI) Client
+/**
+ * Mengambil profil info pengguna dari Google UserInfo endpoint
+ */
+export const fetchGoogleUserProfile = async (token: string): Promise<GoogleUserProfile | null> => {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        displayName: data.name || data.given_name || 'Pengguna Google',
+        email: data.email || '',
+        photoURL: data.picture || '',
+      };
+    }
+  } catch (err) {
+    console.warn('Gagal memuat profil Google:', err);
+  }
+  return null;
+};
+
+/**
+ * Meminta Google OAuth Access Token menggunakan Google Identity Services (GSI)
+ * untuk akses penyimpanan Google Drive (https://www.googleapis.com/auth/drive.file)
+ */
+export const requestGoogleDriveToken = async (customClientId?: string): Promise<string> => {
   const clientId = (customClientId || getSavedGoogleClientId()).trim();
 
   if (!clientId) {
     throw new Error(
-      'Google Client ID belum diatur. Masukkan Google Client ID Anda atau gunakan tombol Login Google.'
+      'Google Client ID belum diatur. Masukkan Google Client ID OAuth 2.0 Anda di modal.'
     );
   }
 
@@ -259,15 +271,49 @@ export const requestGoogleDriveToken = async (customClientId?: string): Promise<
     try {
       const client = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive',
-        callback: (tokenResponse: any) => {
+        // Scope Google Drive file dan profil
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+        callback: async (tokenResponse: any) => {
           if (tokenResponse.error) {
+            // Jika ada pembatasan scope, coba fallback profil
+            if (tokenResponse.error === 'invalid_scope' || tokenResponse.error === 'access_denied') {
+              try {
+                const fallbackClient = (window as any).google.accounts.oauth2.initTokenClient({
+                  client_id: clientId,
+                  scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                  callback: async (fallbackResp: any) => {
+                    if (fallbackResp.access_token) {
+                      setCachedAccessToken(fallbackResp.access_token);
+                      try {
+                        const profile = await fetchGoogleUserProfile(fallbackResp.access_token);
+                        if (profile) setConnectedGoogleUser(profile);
+                      } catch {}
+                      resolve(fallbackResp.access_token);
+                    } else {
+                      reject(new Error(fallbackResp.error_description || fallbackResp.error || 'Akses Google ditolak.'));
+                    }
+                  },
+                });
+                fallbackClient.requestAccessToken();
+                return;
+              } catch {}
+            }
             reject(new Error(tokenResponse.error_description || tokenResponse.error));
             return;
           }
           if (tokenResponse.access_token) {
-            setCachedAccessToken(tokenResponse.access_token);
-            resolve(tokenResponse.access_token);
+            const token = tokenResponse.access_token;
+            setCachedAccessToken(token);
+
+            // Muat profil user secara background
+            try {
+              const profile = await fetchGoogleUserProfile(token);
+              if (profile) {
+                setConnectedGoogleUser(profile);
+              }
+            } catch {}
+
+            resolve(token);
           } else {
             reject(new Error('Tidak menerima access token dari Google.'));
           }
@@ -277,9 +323,12 @@ export const requestGoogleDriveToken = async (customClientId?: string): Promise<
         },
       });
 
-      client.requestAccessToken({ prompt: 'consent' });
+      client.requestAccessToken();
     } catch (err: any) {
       reject(new Error(err.message || 'Gagal memulai dialog Google OAuth.'));
     }
   });
 };
+
+// Backward-compatibility alias
+export const PROVISIONED_CLIENT_ID = DEFAULT_GOOGLE_CLIENT_ID;
