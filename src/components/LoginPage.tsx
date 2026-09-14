@@ -164,8 +164,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
       // 2. If not found by username, check if a student entered NIS
       if (!matched) {
-        const siswaMatch = INITIAL_SISWA.find(
-          (s) => s.nis.toLowerCase() === cleanUser
+        let currentSiswaList = INITIAL_SISWA;
+        try {
+          const rawSiswa = localStorage.getItem('pkl_siswa_list');
+          if (rawSiswa) {
+            const parsed = JSON.parse(rawSiswa);
+            if (Array.isArray(parsed) && parsed.length > 0) currentSiswaList = parsed;
+          }
+        } catch {}
+        const siswaMatch = currentSiswaList.find(
+          (s) => s.nis && s.nis.toLowerCase().trim() === cleanUser
         );
         if (siswaMatch) {
           matched = storedUsers.find((u) => u.id_user === siswaMatch.id_user);
@@ -174,8 +182,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
       // 3. If not found, check if a teacher entered NIP
       if (!matched) {
-        const guruMatch = INITIAL_GURU.find(
-          (g) => g.nip.toLowerCase() === cleanUser
+        let currentGuruList = INITIAL_GURU;
+        try {
+          const rawGuru = localStorage.getItem('pkl_guru_list');
+          if (rawGuru) {
+            const parsed = JSON.parse(rawGuru);
+            if (Array.isArray(parsed) && parsed.length > 0) currentGuruList = parsed;
+          }
+        } catch {}
+        const guruMatch = currentGuruList.find(
+          (g) => g.nip && g.nip.toLowerCase().trim() === cleanUser
         );
         if (guruMatch) {
           matched = storedUsers.find((u) => u.id_user === guruMatch.id_user);
