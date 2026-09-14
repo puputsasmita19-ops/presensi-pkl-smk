@@ -1,4 +1,4 @@
-// Layanan integrasi API MySQL Online
+// Layanan integrasi API MySQL Online & Vercel Serverless
 import { Siswa, DUDI, Presensi, JurnalHarian, KunjunganGuru } from '../types';
 
 export interface DbStatusResponse {
@@ -15,25 +15,43 @@ export interface DbStatusResponse {
   message: string;
 }
 
+// Helper aman parsing JSON (mencegah error jika server proxy mengembalikan HTML 404/500)
+async function safeJsonParse<T>(res: Response): Promise<T | null> {
+  try {
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      // Coba parse manual jika text berformat JSON
+      if (text && (text.startsWith('{') || text.startsWith('['))) {
+        return JSON.parse(text) as T;
+      }
+      return null;
+    }
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export const checkDbConnection = async (): Promise<DbStatusResponse> => {
   try {
     const res = await fetch('/api/db/status');
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
+    const data = await safeJsonParse<DbStatusResponse>(res);
+    if (!res.ok || !data) {
       return {
         connected: false,
-        configured: data.configured ?? false,
-        isTiDB: data.isTiDB ?? false,
-        message: data.message || `Gagal memeriksa koneksi (HTTP ${res.status})`,
+        configured: data?.configured ?? false,
+        isTiDB: data?.isTiDB ?? false,
+        message: data?.message || `Gagal memeriksa koneksi (HTTP ${res.status})`,
       };
     }
-    return await res.json();
+    return data;
   } catch (err: any) {
     return {
       connected: false,
       configured: false,
       isTiDB: false,
-      message: 'Server backend belum aktif atau tidak dapat dijangkau.',
+      message: 'Server backend / Vercel API belum dapat dijangkau.',
     };
   }
 };
@@ -70,13 +88,13 @@ export const uploadPhotoToServer = async (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ photo: photoBase64, id, prefix }),
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return { success: false, error: data.error || `Upload gagal (${res.status})` };
+    const data = await safeJsonParse<{ success: boolean; url?: string; fileName?: string; error?: string }>(res);
+    if (!res.ok || !data) {
+      return { success: false, error: data?.error || `Upload gagal (HTTP ${res.status})` };
     }
-    return await res.json();
+    return data;
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: err.message || 'Koneksi upload foto terputus' };
   }
 };
 
@@ -87,14 +105,14 @@ export const syncAllDataToDb = async (payload: SyncAllPayload): Promise<SyncAllR
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
+    const data = await safeJsonParse<SyncAllResult>(res);
+    if (!res.ok || !data) {
       return {
         success: false,
-        message: data.error || `Gagal sinkronisasi (HTTP ${res.status})`,
+        message: data?.message || `Gagal sinkronisasi (HTTP ${res.status})`,
       };
     }
-    return await res.json();
+    return data;
   } catch (err: any) {
     return {
       success: false,
@@ -108,7 +126,7 @@ export const fetchSiswaFromDb = async (): Promise<Siswa[] | null> => {
   try {
     const res = await fetch('/api/siswa');
     if (!res.ok) return null;
-    return await res.json();
+    return await safeJsonParse<Siswa[]>(res);
   } catch {
     return null;
   }
@@ -143,7 +161,7 @@ export const fetchDudiFromDb = async (): Promise<DUDI[] | null> => {
   try {
     const res = await fetch('/api/dudi');
     if (!res.ok) return null;
-    return await res.json();
+    return await safeJsonParse<DUDI[]>(res);
   } catch {
     return null;
   }
@@ -167,7 +185,7 @@ export const fetchPresensiFromDb = async (): Promise<Presensi[] | null> => {
   try {
     const res = await fetch('/api/presensi');
     if (!res.ok) return null;
-    return await res.json();
+    return await safeJsonParse<Presensi[]>(res);
   } catch {
     return null;
   }
@@ -191,7 +209,7 @@ export const fetchJurnalFromDb = async (): Promise<JurnalHarian[] | null> => {
   try {
     const res = await fetch('/api/jurnal');
     if (!res.ok) return null;
-    return await res.json();
+    return await safeJsonParse<JurnalHarian[]>(res);
   } catch {
     return null;
   }
@@ -215,7 +233,7 @@ export const fetchKunjunganFromDb = async (): Promise<KunjunganGuru[] | null> =>
   try {
     const res = await fetch('/api/kunjungan');
     if (!res.ok) return null;
-    return await res.json();
+    return await safeJsonParse<KunjunganGuru[]>(res);
   } catch {
     return null;
   }
@@ -233,4 +251,3 @@ export const saveKunjunganToDb = async (kunjungan: KunjunganGuru): Promise<boole
     return false;
   }
 };
-
