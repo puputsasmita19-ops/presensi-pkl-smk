@@ -1,7 +1,6 @@
 /**
  * Layanan Autentikasi Google OAuth Murni (Google Identity Services - GSI)
  * untuk Integrasi Penyimpanan Google Drive API.
- * Bebas dari Firebase & Mendukung Penyimpanan Google Drive Mandiri.
  */
 
 export interface GoogleUserProfile {
@@ -16,6 +15,14 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
 
 let cachedAccessToken: string | null = null;
 let cachedUserProfile: GoogleUserProfile | null = null;
+
+export const isValidOAuthAccessToken = (token: string | null | undefined): boolean => {
+  if (!token || typeof token !== 'string') return false;
+  const trimmed = token.trim();
+  // OpenID Connect ID Tokens start with eyJ (these are JWTs, NOT OAuth 2.0 access tokens for Drive REST API)
+  if (trimmed.startsWith('eyJ')) return false;
+  return trimmed.length > 10;
+};
 
 // Ambil Client ID dari environment atau setting pengguna
 export const getGoogleClientId = (): string => {
@@ -48,16 +55,18 @@ export const getSavedGoogleClientId = (): string => {
 };
 
 export const getCachedAccessToken = (): string | null => {
-  if (cachedAccessToken) return cachedAccessToken;
+  if (cachedAccessToken && isValidOAuthAccessToken(cachedAccessToken)) {
+    return cachedAccessToken;
+  }
   if (typeof window !== 'undefined') {
     try {
       const storedLocal = localStorage.getItem('pkl_gdrive_access_token');
-      if (storedLocal) {
+      if (storedLocal && isValidOAuthAccessToken(storedLocal)) {
         cachedAccessToken = storedLocal;
         return storedLocal;
       }
       const storedSession = sessionStorage.getItem('pkl_gdrive_access_token');
-      if (storedSession) {
+      if (storedSession && isValidOAuthAccessToken(storedSession)) {
         cachedAccessToken = storedSession;
         return storedSession;
       }
@@ -67,24 +76,29 @@ export const getCachedAccessToken = (): string | null => {
 };
 
 export const setCachedAccessToken = (token: string | null) => {
-  cachedAccessToken = token;
-  if (typeof window !== 'undefined') {
-    try {
-      if (token) {
-        localStorage.setItem('pkl_gdrive_access_token', token);
-        sessionStorage.setItem('pkl_gdrive_access_token', token);
+  if (token && isValidOAuthAccessToken(token)) {
+    cachedAccessToken = token.trim();
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('pkl_gdrive_access_token', token.trim());
+        sessionStorage.setItem('pkl_gdrive_access_token', token.trim());
         localStorage.setItem('pkl_gdrive_is_connected', 'true');
-      } else {
+      } catch {}
+    }
+  } else {
+    cachedAccessToken = null;
+    if (typeof window !== 'undefined') {
+      try {
         localStorage.removeItem('pkl_gdrive_access_token');
         sessionStorage.removeItem('pkl_gdrive_access_token');
         localStorage.removeItem('pkl_gdrive_is_connected');
-      }
-    } catch {}
+      } catch {}
+    }
   }
 };
 
 export const isGoogleDriveLinked = (): boolean => {
-  return !!getCachedAccessToken() || !!getConnectedGoogleUser();
+  return !!getCachedAccessToken();
 };
 
 export const getConnectedGoogleUser = (): GoogleUserProfile | null => {
@@ -201,7 +215,6 @@ export const renderGoogleSignInButton = async (
               photoURL: payload.picture || '',
             };
             setConnectedGoogleUser(profile);
-            setCachedAccessToken(response.credential);
             onSuccess(profile, response.credential);
           }
         }
@@ -250,7 +263,7 @@ export const fetchGoogleUserProfile = async (token: string): Promise<GoogleUserP
 
 /**
  * Meminta Google OAuth Access Token menggunakan Google Identity Services (GSI)
- * untuk akses penyimpanan Google Drive (https://www.googleapis.com/auth/drive.file)
+ * untuk akses penyimpanan Google Drive (https://www.googleapis.com/auth/drive.file & drive)
  */
 export const requestGoogleDriveToken = async (customClientId?: string): Promise<string> => {
   const clientId = (customClientId || getSavedGoogleClientId()).trim();
@@ -272,15 +285,15 @@ export const requestGoogleDriveToken = async (customClientId?: string): Promise<
       const client = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         // Scope Google Drive file dan profil
-        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
         callback: async (tokenResponse: any) => {
           if (tokenResponse.error) {
-            // Jika ada pembatasan scope, coba fallback profil
+            // Jika ada pembatasan scope drive, coba fallback drive.file
             if (tokenResponse.error === 'invalid_scope' || tokenResponse.error === 'access_denied') {
               try {
                 const fallbackClient = (window as any).google.accounts.oauth2.initTokenClient({
                   client_id: clientId,
-                  scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                  scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
                   callback: async (fallbackResp: any) => {
                     if (fallbackResp.access_token) {
                       setCachedAccessToken(fallbackResp.access_token);

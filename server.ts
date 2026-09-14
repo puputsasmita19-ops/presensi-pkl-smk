@@ -1,14 +1,11 @@
 import path from "path";
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import app, { initTablesIfConnected } from "./src/server/app";
+import app from "./src/server/app";
 
 const PORT = 3000;
 
 async function startServer() {
-  // Jalankan cek inisialisasi tabel MySQL di latar belakang
-  initTablesIfConnected().catch((err) => console.error("MySQL Table Init Error:", err));
-
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

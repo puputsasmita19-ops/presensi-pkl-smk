@@ -50,10 +50,10 @@ export const ArsitekturCodeViewer: React.FC = () => {
             Arsitektur Sistem & Spesifikasi Teknis
           </span>
           <h2 className="text-base font-bold text-slate-900">
-            Sistem Presensi PKL SMK: MySQL / TiDB Cloud + Google Drive + Fonnte + PWA
+            Sistem Presensi PKL SMK: Firebase Firestore + Google Drive + Fonnte + PWA
           </h2>
           <p className="text-xs text-slate-600 leading-relaxed mt-1">
-            Arsitektur dirancang dengan pemisahan peran yang modular (Separation of Concerns). Backend Express &amp; Vercel Serverless mengelola transaksi data relasional ke MySQL / TiDB Cloud, serta mengintegrasikan Google Drive API resmi untuk penyimpanan berkas dan foto selfie.
+            Arsitektur dirancang dengan pemisahan peran yang modular (Separation of Concerns). Database Firebase Firestore mengelola sinkronisasi data real-time, sementara Google Drive API mengamankan foto bukti presensi siswa dan laporan kunjungan guru.
           </p>
         </div>
 
@@ -64,20 +64,20 @@ export const ArsitekturCodeViewer: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-slate-900 text-sky-400 flex items-center justify-center font-bold">
               <Server className="w-4 h-4" />
             </div>
-            <strong className="text-slate-900 block font-bold">Backend (Node.js &amp; Vercel API)</strong>
+            <strong className="text-slate-900 block font-bold">Backend & Express Service</strong>
             <p className="text-[11px] text-slate-600">
-              Menyediakan endpoint REST API teroptimasi, fallback otomatis ke penyimpanan lokal disk, dan integrasi Vercel Serverless.
+              Menyediakan endpoint API teroptimasi, fallback penyimpanan berkas lokal server, dan proxy keamanan.
             </p>
           </div>
 
-          {/* Pillar 2: Database MySQL / TiDB */}
+          {/* Pillar 2: Database Firebase Firestore */}
           <div className="bg-amber-50/70 rounded-xl p-3 border border-amber-200 space-y-1.5">
             <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold">
               <Database className="w-4 h-4" />
             </div>
-            <strong className="text-amber-950 block font-bold">Database (MySQL &amp; TiDB Cloud)</strong>
+            <strong className="text-amber-950 block font-bold">Database (Firebase Firestore)</strong>
             <p className="text-[11px] text-amber-900">
-              Skema Relasional ACID standar (Foreign Keys: <code>id_user</code>, <code>id_dudi</code>, <code>id_siswa</code>), query terindeks, dan dukungan SSL.
+              Sinkronisasi real-time multi-tier, offline persistence via IndexedDB, dan listener otomatis antar-perangkat.
             </p>
           </div>
 

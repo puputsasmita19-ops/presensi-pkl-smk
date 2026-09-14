@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   getCachedAccessToken,
   setCachedAccessToken,
@@ -53,6 +53,7 @@ import {
   ChevronDown,
   ChevronUp,
   Image as ImageIcon,
+  Sparkles,
 } from 'lucide-react';
 
 interface GoogleDriveModalProps {
@@ -93,6 +94,14 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(getSavedCompressionPreset());
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  const [testUploadResult, setTestUploadResult] = useState<{
+    success: boolean;
+    fileName?: string;
+    driveUrl?: string;
+    fileId?: string;
+    thumbnailUrl?: string;
+    error?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -113,24 +122,35 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
         loadPklFolderInfo();
       } else {
         setTimeout(() => {
-          renderGoogleSignInButton('gsi-official-button-container', async (profile, idToken) => {
-            setIsOAuthConnected(true);
-            setConnectedUser(profile);
-            if (onConnectionChange) onConnectionChange(true);
-            setStatusMsg({
-              type: 'success',
-              text: `Berhasil login dengan ${profile.displayName} (${profile.email}). Akun Google aktif!`,
-            });
-            await saveGoogleDriveConfigToFirestore({
-              accessToken: idToken,
-              folderId: getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID,
-              userEmail: profile.email,
-              userName: profile.displayName,
-              userPhoto: profile.photoURL,
-              updatedAt: new Date().toISOString(),
-            });
-            loadPklFolderInfo();
-            fetchOAuthFiles();
+          renderGoogleSignInButton('gsi-official-button-container', async (profile) => {
+            // Ketika login dengan Google Identity button, lanjutkan request token akses Drive
+            try {
+              const driveToken = await requestGoogleDriveToken(activeClientId);
+              if (driveToken) {
+                setIsOAuthConnected(true);
+                setConnectedUser(profile);
+                if (onConnectionChange) onConnectionChange(true);
+                setStatusMsg({
+                  type: 'success',
+                  text: `Berhasil login dengan ${profile.displayName} (${profile.email}). Google Drive aktif!`,
+                });
+                await saveGoogleDriveConfigToFirestore({
+                  accessToken: driveToken,
+                  folderId: getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID,
+                  userEmail: profile.email,
+                  userName: profile.displayName,
+                  userPhoto: profile.photoURL,
+                  updatedAt: new Date().toISOString(),
+                });
+                loadPklFolderInfo();
+                fetchOAuthFiles();
+              }
+            } catch (err: any) {
+              setStatusMsg({
+                type: 'warning',
+                text: `Login profil berhasil (${profile.displayName}). Klik tombol "Hubungkan Izin Google Drive" di bawah untuk mengaktifkan unggah foto.`,
+              });
+            }
           }, activeClientId);
         }, 150);
       }
@@ -202,6 +222,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     setPklFolderId(DEFAULT_PKL_FOLDER_ID);
     setFolderIdInput(DEFAULT_PKL_FOLDER_ID);
     setFiles([]);
+    setTestUploadResult(null);
     if (onConnectionChange) onConnectionChange(false);
     await saveGoogleDriveConfigToFirestore({
       accessToken: '',
@@ -214,6 +235,88 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       type: 'success',
       text: 'Koneksi akun Google Drive berhasil diputuskan.',
     });
+  };
+
+  const handleTestUploadPhoto = async () => {
+    setIsLoading(true);
+    setStatusMsg(null);
+    setTestUploadResult(null);
+
+    try {
+      // 1. Buat sample gambar uji coba pada canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = 480;
+      canvas.height = 360;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Latar Belakang Gradien
+        const grad = ctx.createLinearGradient(0, 0, 480, 360);
+        grad.addColorStop(0, '#0284c7');
+        grad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 480, 360);
+
+        // Box Kartu
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.roundRect(24, 24, 432, 312, 16);
+        ctx.fill();
+
+        // Judul & Badge
+        ctx.fillStyle = '#0369a1';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillText('UJI COBA PRESENSI PKL SMK', 48, 70);
+
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 15px sans-serif';
+        ctx.fillText('✓ Google Drive Photo Upload Berhasil!', 48, 105);
+
+        ctx.fillStyle = '#334155';
+        ctx.font = '13px sans-serif';
+        ctx.fillText(`Waktu Uji Coba: ${new Date().toLocaleString('id-ID')}`, 48, 145);
+        ctx.fillText(`Target Folder ID: ${pklFolderId || DEFAULT_PKL_FOLDER_ID}`, 48, 175);
+        ctx.fillText(`Akun Google: ${connectedUser?.email || 'Akun Aktif'}`, 48, 205);
+        ctx.fillText('Status: Sistem Sinkronisasi Foto Siap Pakai', 48, 235);
+
+        // Watermark bawah
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(48, 265, 384, 1);
+        ctx.fillStyle = '#64748b';
+        ctx.font = 'italic 11px sans-serif';
+        ctx.fillText('Sistem Presensi & Jurnal PKL SMK Terintegrasi', 48, 295);
+      }
+
+      const testDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const testFileName = `TEST_UJI_PRESENSI_${Date.now()}.jpg`;
+
+      const targetFolder = pklFolderId || DEFAULT_PKL_FOLDER_ID;
+      const res = await uploadFileToDrive(testFileName, testDataUrl, 'image/jpeg', targetFolder);
+
+      setTestUploadResult({
+        success: true,
+        fileName: res.name || testFileName,
+        driveUrl: res.webViewLink || `https://drive.google.com/file/d/${res.id}/view`,
+        fileId: res.id,
+        thumbnailUrl: res.thumbnailLink || testDataUrl,
+      });
+
+      setStatusMsg({
+        type: 'success',
+        text: `✓ Uji Coba Berhasil! Foto berhasil diunggah langsung ke Google Drive (ID File: ${res.id}).`,
+      });
+
+      await fetchOAuthFiles();
+    } catch (err: any) {
+      setTestUploadResult({
+        success: false,
+        error: err?.message || 'Gagal mengunggah foto uji coba ke Google Drive',
+      });
+      setStatusMsg({
+        type: 'error',
+        text: `Uji Coba Gagal: ${err?.message || 'Terjadi kesalahan saat upload ke Google Drive'}`,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleApplyManualToken = async () => {
@@ -532,33 +635,90 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
 
             {/* Profil Terhubung / Tombol Login */}
             {isOAuthConnected ? (
-              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  {connectedUser?.photoURL ? (
-                    <img
-                      src={connectedUser.photoURL}
-                      alt="Avatar Google"
-                      className="w-10 h-10 rounded-full border border-slate-200 shrink-0"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300 flex items-center justify-center font-bold text-sm shrink-0">
-                      <UserIcon className="w-5 h-5" />
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">
-                      {connectedUser?.displayName || 'Akun Google Terhubung'}
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                      {connectedUser?.email || 'Izin Google Drive Aktif'}
+              <div className="space-y-3">
+                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {connectedUser?.photoURL ? (
+                      <img
+                        src={connectedUser.photoURL}
+                        alt="Avatar Google"
+                        className="w-10 h-10 rounded-full border border-slate-200 shrink-0"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300 flex items-center justify-center font-bold text-sm shrink-0">
+                        <UserIcon className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">
+                        {connectedUser?.displayName || 'Akun Google Terhubung'}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {connectedUser?.email || 'Izin Google Drive Aktif'}
+                      </div>
                     </div>
                   </div>
+
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold shrink-0">
+                    OAuth Aktif
+                  </span>
                 </div>
 
-                <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold shrink-0">
-                  OAuth Aktif
-                </span>
+                {/* Tombol Uji Coba Upload Foto Test Langsung */}
+                <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-sky-900 dark:text-sky-200 text-xs flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        <span>Uji Coba Unggah Foto ke Google Drive</span>
+                      </div>
+                      <p className="text-[10px] text-sky-800/80 dark:text-sky-300/80 mt-0.5">
+                        Pastikan upload foto berfungsi sebelum siswa melakukan presensi selfie.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleTestUploadPhoto}
+                      disabled={isLoading}
+                      className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                    >
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>{isLoading ? 'Mengunggah...' : 'Uji Upload Sekarang'}</span>
+                    </button>
+                  </div>
+
+                  {testUploadResult && testUploadResult.success && (
+                    <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {testUploadResult.thumbnailUrl && (
+                          <img
+                            src={testUploadResult.thumbnailUrl}
+                            alt="Hasil Test"
+                            className="w-10 h-10 object-cover rounded-lg border border-emerald-300 shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200 truncate">
+                            {testUploadResult.fileName}
+                          </div>
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                            ID: {testUploadResult.fileId}
+                          </div>
+                        </div>
+                      </div>
+                      <a
+                        href={testUploadResult.driveUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-1 bg-emerald-600 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shrink-0 hover:bg-emerald-700"
+                      >
+                        <span>Lihat di Drive</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="space-y-3 pt-1">
@@ -569,7 +729,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                   </span>
                 </div>
 
-                {/* Tombol Resmi Google Identity Services (Mematuhi Kebijakan Google 100%) */}
+                {/* Tombol Resmi Google Identity Services */}
                 <div className="flex flex-col items-center justify-center py-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
                   <div id="gsi-official-button-container" className="min-h-[44px] flex items-center justify-center w-full"></div>
                 </div>
@@ -595,7 +755,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
                     <path fill="none" d="M0 0h48v48H0z"></path>
                   </svg>
-                  <span>{isLoading ? 'Menghubungkan ke Google...' : 'Login dengan Akun Google (Pop-up)'}</span>
+                  <span>{isLoading ? 'Menghubungkan ke Google...' : 'Hubungkan Akun Google (Pop-up Izin Drive)'}</span>
                 </button>
 
                 {/* Panduan jika muncul Akses Diblokir */}

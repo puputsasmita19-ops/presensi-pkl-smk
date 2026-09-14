@@ -1,10 +1,13 @@
-import { getCachedAccessToken } from './googleAuth';
+import { getCachedAccessToken, isValidOAuthAccessToken } from './googleAuth';
 
 export interface DriveFileItem {
   id: string;
   name: string;
   mimeType: string;
   webViewLink?: string;
+  webContentLink?: string;
+  thumbnailLink?: string;
+  directImageUrl?: string;
   iconLink?: string;
   createdTime?: string;
   size?: string;
@@ -14,7 +17,7 @@ export const DEFAULT_PKL_FOLDER_ID = '16J6-5viU-CVCconsfFTNtrMCNMx-0HNz';
 let cachedPklFolderId: string | null = null;
 
 export const getCachedPklFolderId = (): string => {
-  if (cachedPklFolderId) return cachedPklFolderId;
+  if (cachedPklFolderId && cachedPklFolderId.trim()) return cachedPklFolderId.trim();
   if (typeof window !== 'undefined') {
     try {
       const saved = localStorage.getItem('pkl_gdrive_folder_id');
@@ -28,10 +31,10 @@ export const getCachedPklFolderId = (): string => {
 };
 
 export const setCachedPklFolderId = (folderId: string) => {
-  cachedPklFolderId = folderId;
+  cachedPklFolderId = folderId.trim();
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem('pkl_gdrive_folder_id', folderId);
+      localStorage.setItem('pkl_gdrive_folder_id', cachedPklFolderId);
     } catch {}
   }
 };
@@ -46,12 +49,12 @@ export const resetCachedPklFolderId = () => {
 };
 
 /**
- * Create or locate a folder in Google Drive named "Presensi & Jurnal PKL SMK"
+ * Buat atau cari folder di Google Drive
  */
 export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL SMK'): Promise<string> => {
-  const existingFolderId = getCachedPklFolderId();
-  if (existingFolderId) {
-    return existingFolderId;
+  const current = getCachedPklFolderId();
+  if (current && current.trim()) {
+    return current.trim();
   }
 
   const token = getCachedAccessToken();
@@ -60,7 +63,6 @@ export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL S
   }
 
   try {
-    // 1. Search existing folder
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
       `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
     )}&fields=files(id,name)`;
@@ -72,40 +74,97 @@ export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL S
     if (searchRes.ok) {
       const searchData = await searchRes.json();
       if (searchData.files && searchData.files.length > 0) {
-        cachedPklFolderId = searchData.files[0].id;
-        setCachedPklFolderId(cachedPklFolderId);
-        return cachedPklFolderId;
+        const foundId = searchData.files[0].id;
+        setCachedPklFolderId(foundId);
+        return foundId;
       }
     }
-  } catch {}
+
+    // Jika tidak ada, buat folder baru
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+      }),
+    });
+
+    if (createRes.ok) {
+      const created = await createRes.json();
+      if (created.id) {
+        setCachedPklFolderId(created.id);
+        return created.id;
+      }
+    }
+  } catch (e) {
+    console.warn('Info folder Google Drive:', e);
+  }
 
   return DEFAULT_PKL_FOLDER_ID;
 };
 
 /**
- * List files in user's Google Drive (or inside PKL folder)
+ * Atur hak akses file menjadi public / reader agar link foto dapat dibuka
+ */
+export const makeDriveFilePublic = async (fileId: string): Promise<boolean> => {
+  const token = getCachedAccessToken();
+  if (!token || !fileId) return false;
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        role: 'reader',
+        type: 'anyone',
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Ambil daftar file dari Google Drive
  */
 export const listDriveFiles = async (folderId?: string): Promise<DriveFileItem[]> => {
   const token = getCachedAccessToken();
   if (!token) {
-    throw new Error('Belum terhubung ke Google Drive. Silakan login dengan Akun Google.');
+    throw new Error('Belum terhubung ke Google Drive. Silakan klik tombol "Hubungkan Google Drive".');
   }
 
   const targetFolder = folderId || getCachedPklFolderId();
-  let query = "trashed = false";
-  if (targetFolder) {
+  let query = 'trashed = false';
+  if (targetFolder && targetFolder !== 'root') {
     query += ` and '${targetFolder}' in parents`;
   }
 
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
     query
-  )}&fields=files(id,name,mimeType,webViewLink,iconLink,createdTime,size)&pageSize=30&orderBy=createdTime desc`;
+  )}&fields=files(id,name,mimeType,webViewLink,webContentLink,thumbnailLink,iconLink,createdTime,size)&pageSize=50&orderBy=createdTime desc`;
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
   });
+
+  // Jika folder spesifik gagal (404/403), fallback ke list semua file yang dibuat aplikasi
+  if (!response.ok && targetFolder) {
+    const fallbackUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+      'trashed = false'
+    )}&fields=files(id,name,mimeType,webViewLink,webContentLink,thumbnailLink,iconLink,createdTime,size)&pageSize=50&orderBy=createdTime desc`;
+    response = await fetch(fallbackUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -113,46 +172,23 @@ export const listDriveFiles = async (folderId?: string): Promise<DriveFileItem[]
   }
 
   const data = await response.json();
-  return data.files || [];
+  const rawFiles = data.files || [];
+
+  return rawFiles.map((f: any) => ({
+    ...f,
+    directImageUrl: `https://lh3.googleusercontent.com/d/${f.id}`,
+  }));
 };
 
 /**
- * Upload a text / JSON / blob file to Google Drive using standard multipart/related format
+ * Helper internal untuk membuat multipart/related body
  */
-export const uploadFileToDrive = async (
-  fileName: string,
-  content: string | Blob,
-  mimeType = 'application/json',
-  folderId?: string
-): Promise<DriveFileItem> => {
-  const token = getCachedAccessToken();
-  if (!token) {
-    throw new Error('Belum terhubung ke Google Drive. Silakan hubungkan akun Google Anda.');
-  }
-
-  const targetFolderId = folderId || getCachedPklFolderId();
-
-  const metadata: any = {
-    name: fileName,
-    mimeType: mimeType,
-  };
-
-  if (targetFolderId) {
-    metadata.parents = [targetFolderId];
-  }
-
-  const boundary = '-------' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+function buildMultipartBody(metadata: Record<string, any>, mediaBlob: Blob, mimeType: string, boundary: string): Blob {
   const metadataBlob = new Blob([JSON.stringify(metadata)], {
     type: 'application/json; charset=UTF-8',
   });
 
-  const mediaBlob =
-    typeof content === 'string'
-      ? new Blob([content], { type: mimeType })
-      : content;
-
-  // Google Drive REST API v3 multipart/related boundary format
-  const multipartBlob = new Blob(
+  return new Blob(
     [
       `--${boundary}\r\n`,
       'Content-Type: application/json; charset=UTF-8\r\n\r\n',
@@ -164,60 +200,147 @@ export const uploadFileToDrive = async (
     ],
     { type: `multipart/related; boundary=${boundary}` }
   );
+}
 
-  const response = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,iconLink,createdTime,size,mimeType',
-    {
+/**
+ * Upload foto / berkas ke Google Drive secara terstruktur dan tahan kegagalan (Fault-Tolerant)
+ */
+export const uploadFileToDrive = async (
+  fileName: string,
+  content: string | Blob,
+  mimeType = 'image/jpeg',
+  folderId?: string
+): Promise<DriveFileItem> => {
+  const token = getCachedAccessToken();
+  if (!token) {
+    throw new Error('Akses token Google Drive tidak ditemukan. Silakan hubungkan Akun Google Anda.');
+  }
+
+  const targetFolderId = folderId || getCachedPklFolderId();
+
+  // Siapkan media Blob
+  let mediaBlob: Blob;
+  if (typeof content === 'string') {
+    if (content.startsWith('data:')) {
+      const parts = content.split(',');
+      const meta = parts[0];
+      const rawBase64 = parts[1] || '';
+      const detectedMime = meta.substring(5).split(';')[0] || mimeType;
+      mimeType = detectedMime;
+      const cleanB64 = rawBase64.replace(/[\r\n\s]+/g, '');
+      const binStr = atob(cleanB64);
+      const arr = new Uint8Array(binStr.length);
+      for (let i = 0; i < binStr.length; i++) {
+        arr[i] = binStr.charCodeAt(i);
+      }
+      mediaBlob = new Blob([arr], { type: mimeType });
+    } else {
+      mediaBlob = new Blob([content], { type: mimeType });
+    }
+  } else {
+    mediaBlob = content;
+    if (mediaBlob.type) {
+      mimeType = mediaBlob.type;
+    }
+  }
+
+  const boundary = '-------GDriveMultipart' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+  // Metadata awal dengan target parent folder jika ada
+  const metadata: Record<string, any> = {
+    name: fileName,
+    mimeType: mimeType,
+  };
+
+  if (targetFolderId && targetFolderId.trim()) {
+    metadata.parents = [targetFolderId.trim()];
+  }
+
+  const multipartBody = buildMultipartBody(metadata, mediaBlob, mimeType, boundary);
+
+  const uploadEndpoint =
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,thumbnailLink,iconLink,createdTime,size,mimeType';
+
+  let response = await fetch(uploadEndpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+    },
+    body: multipartBody,
+  });
+
+  // FALLBACK 1: Jika error 404/403/400 terkait parent folder ID (misal folder belum dibagikan atau invalid)
+  if (!response.ok && targetFolderId && (response.status === 404 || response.status === 403 || response.status === 400)) {
+    console.warn(`Upload ke folder ${targetFolderId} ditolak (${response.status}), mencoba upload ke Root My Drive...`);
+
+    const rootMetadata: Record<string, any> = {
+      name: fileName,
+      mimeType: mimeType,
+    };
+    const rootBody = buildMultipartBody(rootMetadata, mediaBlob, mimeType, boundary);
+
+    response = await fetch(uploadEndpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': `multipart/related; boundary=${boundary}`,
       },
-      body: multipartBlob,
-    }
-  );
+      body: rootBody,
+    });
+  }
 
-  // Jika folder parent tidak dapat diakses, fallback ke root Drive
-  if (!response.ok && targetFolderId && (response.status === 404 || response.status === 403)) {
-    const rootMetadata: any = {
-      name: fileName,
-      mimeType: mimeType,
-    };
-    const fallbackMultipart = new Blob(
-      [
-        `--${boundary}\r\n`,
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-        new Blob([JSON.stringify(rootMetadata)], { type: 'application/json; charset=UTF-8' }),
-        `\r\n--${boundary}\r\n`,
-        `Content-Type: ${mimeType}\r\n\r\n`,
-        mediaBlob,
-        `\r\n--${boundary}--`,
-      ],
-      { type: `multipart/related; boundary=${boundary}` }
-    );
-    const retryRes = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,iconLink,createdTime,size,mimeType',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': `multipart/related; boundary=${boundary}`,
-        },
-        body: fallbackMultipart,
+  // FALLBACK 2: Jika multipart ditolak, coba direct media upload (uploadType=media)
+  if (!response.ok && (response.status === 400 || response.status === 415)) {
+    console.warn('Multipart upload ditolak, mencoba direct binary media upload...');
+    const directUrl = `https://www.googleapis.com/upload/drive/v3/files?uploadType=media&fields=id,name,webViewLink,webContentLink,thumbnailLink`;
+    response = await fetch(directUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': mimeType,
+      },
+      body: mediaBlob,
+    });
+
+    if (response.ok) {
+      const createdItem = await response.json();
+      // Rename file
+      if (createdItem.id) {
+        try {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${createdItem.id}`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name: fileName }),
+          });
+        } catch {}
       }
-    );
-    if (retryRes.ok) {
-      return await retryRes.json();
     }
   }
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const errorJson = await response.json().catch(() => ({}));
     const message =
-      err.error?.message ||
-      `Gagal mengunggah file ke Google Drive (Status: ${response.status} ${response.statusText})`;
+      errorJson.error?.message ||
+      `Gagal mengunggah foto ke Google Drive (Status HTTP ${response.status}: ${response.statusText})`;
     throw new Error(message);
   }
 
-  return await response.json();
+  const resultData: DriveFileItem = await response.json();
+
+  // Jadikan file dapat dilihat via thumbnail / direct preview
+  if (resultData.id) {
+    makeDriveFilePublic(resultData.id).catch(() => {});
+  }
+
+  return {
+    ...resultData,
+    webViewLink: resultData.webViewLink || `https://drive.google.com/file/d/${resultData.id}/view`,
+    webContentLink: resultData.webContentLink || `https://drive.google.com/uc?export=download&id=${resultData.id}`,
+    thumbnailLink: `https://lh3.googleusercontent.com/d/${resultData.id}`,
+    directImageUrl: `https://lh3.googleusercontent.com/d/${resultData.id}`,
+  };
 };

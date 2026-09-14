@@ -565,10 +565,10 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
         await onSavePresensi(updated, false);
         if (!isOnline) {
           alert(
-            `[MODE OFFLINE] Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan di penyimpanan perangkat lokal. Data akan otomatis dikirim ke Database MySQL/TiDB saat online.`
+            `[MODE OFFLINE] Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan di penyimpanan perangkat lokal. Data akan otomatis dikirim ke Firebase Firestore saat online.`
           );
         } else {
-          alert(`Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan ke Database MySQL/TiDB Cloud!`);
+          alert(`Presensi Pulang berhasil dicatat pada ${timeStr} WIB dan tersimpan ke Firebase Firestore!`);
         }
         return;
       }
