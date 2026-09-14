@@ -62,6 +62,7 @@ import {
   saveToOfflineQueue,
   savePresensiToDatabase,
   syncOfflinePresensiToDatabase,
+  clearOfflineQueue,
 } from './services/offlinePresensiService';
 import {
   executeUnifiedPresensiSave,
@@ -346,9 +347,10 @@ export default function App() {
     setIsGoogleConnected(isGoogleDriveLinked());
   }, []);
 
-  // Initialize offline queue from localStorage on mount
+  // Bersihkan antrean offline lama agar tidak muncul indikator tersimpan di semua role
   useEffect(() => {
-    setPendingOfflineQueue(getOfflineQueue());
+    clearOfflineQueue();
+    setPendingOfflineQueue([]);
   }, []);
 
   // Memuat data dari IndexedDB lokal dan berlangganan realtime updates dari Firebase Firestore

@@ -839,30 +839,12 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
               <strong>{todayAttendance.jam_pulang ? `${todayAttendance.jam_pulang} WIB` : 'Belum Absen Pulang'}</strong>
             </p>
 
-            {/* Cloud & LocalStorage Sync Status Indicator */}
+            {/* Cloud & Realtime Sync Status Indicator */}
             <div className="pt-1 flex items-center gap-2 flex-wrap">
-              {todayAttendance.is_offline_pending ? (
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                  <RefreshCw className="w-3 h-3 text-amber-600 animate-spin" />
-                  <span>Tersimpan di Cache Lokal (Menunggu Sinkronisasi Database)</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                  <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>Tersinkronisasi ke Database MySQL/TiDB Cloud & Drive</span>
-                </span>
-              )}
-
-              {isOnline && todayAttendance.is_offline_pending && onTriggerSync && (
-                <button
-                  type="button"
-                  onClick={onTriggerSync}
-                  disabled={isSyncing}
-                  className="text-[10px] font-bold text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-amber-100 underline cursor-pointer"
-                >
-                  {isSyncing ? 'Sedang menyinkronkan...' : 'Sinkronkan Sekarang'}
-                </button>
-              )}
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                <span>Tersimpan &amp; Sinkron Realtime (Firestore &amp; Drive)</span>
+              </span>
             </div>
 
             {todayAttendance.status === 'Hadir' && !todayAttendance.jam_pulang && (
@@ -901,13 +883,8 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
             </div>
             <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
               Anda tetap dapat melakukan absensi masuk, pulang, izin, maupun sakit beserta bukti foto selfie.
-              Data presensi Anda akan <strong>diamankan sementara di penyimpanan lokal perangkat</strong> dan akan <strong>otomatis dikirimkan ke Database MySQL/TiDB & Google Drive</strong> segera setelah koneksi internet kembali normal.
+              Data presensi Anda akan <strong>diamankan di penyimpanan lokal perangkat</strong> dan <strong>otomatis disinkronkan ke Firebase Firestore &amp; Google Drive</strong> saat kembali online.
             </p>
-            {pendingOfflineCount > 0 && (
-              <div className="pt-1 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
-                📌 Terdapat {pendingOfflineCount} presensi di antrean lokal yang menunggu koneksi internet stabil.
-              </div>
-            )}
           </div>
         </div>
       )}

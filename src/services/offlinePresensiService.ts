@@ -1,6 +1,5 @@
 /**
- * Service untuk mengelola antrean presensi saat offline
- * dan melakukan sinkronisasi otomatis ke Firebase Firestore saat online
+ * Service untuk mengelola antrean presensi dan sinkronisasi ke Firebase Firestore.
  */
 import { Presensi } from '../types';
 import { savePresensiToFirestore as saveToFirestoreDoc } from './firestoreService';
@@ -8,10 +7,25 @@ import { savePresensiToFirestore as saveToFirestoreDoc } from './firestoreServic
 export const OFFLINE_QUEUE_KEY = 'pkl_offline_presensi_queue';
 
 /**
+ * Menghapus total seluruh antrean offline dari penyimpanan lokal
+ */
+export const clearOfflineQueue = (): void => {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(OFFLINE_QUEUE_KEY);
+      sessionStorage.removeItem(OFFLINE_QUEUE_KEY);
+    }
+  } catch (err) {
+    console.warn('Gagal membersihkan antrean offline:', err);
+  }
+};
+
+/**
  * Membaca antrean data presensi offline yang tersimpan di localStorage
  */
 export const getOfflineQueue = (): Presensi[] => {
   try {
+    if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (err) {
@@ -25,6 +39,7 @@ export const getOfflineQueue = (): Presensi[] => {
  */
 export const saveToOfflineQueue = (presensi: Presensi): Presensi[] => {
   try {
+    if (typeof window === 'undefined') return [];
     const currentQueue = getOfflineQueue();
     const existingIndex = currentQueue.findIndex((p) => p.id_presensi === presensi.id_presensi);
 
@@ -47,7 +62,7 @@ export const saveToOfflineQueue = (presensi: Presensi): Presensi[] => {
     return updatedQueue;
   } catch (err) {
     console.error('Gagal menyimpan ke antrean offline localStorage:', err);
-    return getOfflineQueue();
+    return [];
   }
 };
 
@@ -56,13 +71,18 @@ export const saveToOfflineQueue = (presensi: Presensi): Presensi[] => {
  */
 export const removeFromOfflineQueue = (id_presensi: string): Presensi[] => {
   try {
+    if (typeof window === 'undefined') return [];
     const currentQueue = getOfflineQueue();
     const updated = currentQueue.filter((p) => p.id_presensi !== id_presensi);
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(updated));
+    if (updated.length > 0) {
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(updated));
+    } else {
+      localStorage.removeItem(OFFLINE_QUEUE_KEY);
+    }
     return updated;
   } catch (err) {
     console.error('Gagal menghapus item dari antrean offline:', err);
-    return getOfflineQueue();
+    return [];
   }
 };
 
@@ -139,8 +159,10 @@ export const syncOfflinePresensiToDatabase = async (
     }
   }
 
-  return { successCount, failedCount, syncedRecords, errors };
+  return {
+    successCount,
+    failedCount,
+    syncedRecords,
+    errors,
+  };
 };
-
-export const savePresensiToFirestore = savePresensiToDatabase;
-export const syncOfflinePresensiToFirebase = syncOfflinePresensiToDatabase;
