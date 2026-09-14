@@ -106,6 +106,8 @@ export const exportDUDIToExcel = (dudiList: DUDI[], fileType: 'xlsx' | 'csv' = '
       'ID DUDI': d.id_dudi,
       'Nama Instansi': d.nama_instansi,
       'Bidang Usaha': d.bidang,
+      'Nama Pembimbing / PIC': d.nama_pembimbing || '-',
+      'No HP / WA Pembimbing': d.nomor_wa_pembimbing || '-',
       'Alamat': d.alamat,
       'Latitude': d.koordinat_lokasi.latitude,
       'Longitude': d.koordinat_lokasi.longitude,
@@ -131,6 +133,8 @@ export const downloadDUDITemplate = (fileType: 'xlsx' | 'csv' = 'xlsx') => {
     {
       'Nama Instansi': 'PT Astra Honda Motor Service',
       'Bidang Usaha': 'Teknik Otomotif & Kendaraan Ringan',
+      'Nama Pembimbing / PIC': 'Hendra Wijaya, S.T.',
+      'No HP / WA Pembimbing': '081399887766',
       'Alamat': 'Jl. Ahmad Yani No. 88, Surabaya',
       'Latitude': -7.312543,
       'Longitude': 112.734211,
@@ -144,6 +148,8 @@ export const downloadDUDITemplate = (fileType: 'xlsx' | 'csv' = 'xlsx') => {
     {
       'Nama Instansi': 'PT Media Nusantara Citra (Studio)',
       'Bidang Usaha': 'Multimedia & Penyiaran Digital',
+      'Nama Pembimbing / PIC': 'Bambang Irawan, M.Kom',
+      'No HP / WA Pembimbing': '081399887767',
       'Alamat': 'Jl. Raya Darmo Permai III, Surabaya',
       'Latitude': -7.289123,
       'Longitude': 112.698342,
@@ -377,6 +383,8 @@ export const parseDUDIImport = (rawRows: any[], existingDudi: DUDI[]): ParseResu
 
     const namaInstansi = getCol('Nama Instansi', 'Nama Perusahaan', 'Nama DUDI', 'Instansi');
     const bidang = getCol('Bidang Usaha', 'Bidang');
+    const namaPembimbing = getCol('Nama Pembimbing / PIC', 'Nama Pembimbing', 'Pembimbing DUDI', 'Penanggung Jawab', 'PIC');
+    const nomorWaPembimbing = getCol('No HP / WA Pembimbing', 'Nomor HP Pembimbing', 'No HP Pembimbing', 'WhatsApp Pembimbing', 'No WA Pembimbing', 'No HP', 'No WA', 'Telepon');
     const alamat = getCol('Alamat', 'Alamat Lengkap', 'Lokasi');
     const latRaw = getCol('Latitude', 'Lat');
     const lonRaw = getCol('Longitude', 'Lon', 'Long');
@@ -458,6 +466,8 @@ export const parseDUDIImport = (rawRows: any[], existingDudi: DUDI[]): ParseResu
       id_dudi: assignedIdDudi,
       nama_instansi: namaInstansi,
       bidang: bidang || 'Teknologi & Industri',
+      nama_pembimbing: namaPembimbing || undefined,
+      nomor_wa_pembimbing: nomorWaPembimbing || undefined,
       alamat: alamat || 'Surabaya, Jawa Timur',
       koordinat_lokasi: { latitude: lat, longitude: lon },
       radius_meter: radius,

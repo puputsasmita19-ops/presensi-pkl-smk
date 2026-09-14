@@ -28,6 +28,7 @@ import {
 import {
   bulkResetPasswords,
   bulkResetUsernames,
+  BulkUsernameMode,
   exportCredentialsToCsv,
   updateUserPassword,
   updateUserAccount,
@@ -56,11 +57,17 @@ export const BulkAccountManager: React.FC<BulkAccountManagerProps> = ({
   const [showAllPasswords, setShowAllPasswords] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Bulk Reset Modal State
+  // Bulk Reset Password Modal State
   const [isBulkResetModalOpen, setIsBulkResetModalOpen] = useState(false);
   const [bulkResetMode, setBulkResetMode] = useState<'nis_nip' | 'custom' | 'default_role' | 'random'>('nis_nip');
   const [customPasswordInput, setCustomPasswordInput] = useState('smk2026');
   const [bulkActionSuccess, setBulkActionSuccess] = useState<string | null>(null);
+
+  // Bulk Reset Username Modal State
+  const [isBulkUsernameModalOpen, setIsBulkUsernameModalOpen] = useState(false);
+  const [bulkUsernameMode, setBulkUsernameMode] = useState<BulkUsernameMode>('nis_nip');
+  const [customUsernamePrefix, setCustomUsernamePrefix] = useState('user_');
+  const [usernameSeparator, setUsernameSeparator] = useState<'.' | '_' | ''>('.');
 
   // Single Edit Modal State
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -169,6 +176,101 @@ export const BulkAccountManager: React.FC<BulkAccountManagerProps> = ({
     );
     setTimeout(() => setBulkActionSuccess(null), 4000);
   };
+
+  // Execute Bulk Username Reset
+  const handleExecuteBulkUsername = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedUserIds.length === 0) return;
+
+    const updated = bulkResetUsernames(
+      selectedUserIds,
+      bulkUsernameMode,
+      customUsernamePrefix,
+      usernameSeparator,
+      siswaList,
+      guruList,
+      dudiList
+    );
+
+    onUsersChange(updated);
+    setIsBulkUsernameModalOpen(false);
+    setBulkActionSuccess(
+      `Berhasil memperbarui username login untuk ${selectedUserIds.length} akun terpilih!`
+    );
+    setTimeout(() => setBulkActionSuccess(null), 4000);
+  };
+
+  // Preview for Bulk Username Modal (Top 5 selected users)
+  const usernamePreviewList = useMemo(() => {
+    if (!isBulkUsernameModalOpen || selectedUserIds.length === 0) return [];
+    const targetUsers = usersList.filter((u) => selectedUserIds.includes(u.id_user)).slice(0, 5);
+
+    // Compute updated mock usernames for preview
+    const cleanNameString = (name: string, sep: string) => {
+      const titleRegex = /\b(Drs|Dra|Ir|H|Hj|S\.Kom|M\.Kom|S\.T|M\.T|S\.Pd|M\.Pd|S\.E|M\.M|Ph\.D)\b\.?/gi;
+      const withoutTitles = name.replace(titleRegex, '').trim();
+      const cleanChars = withoutTitles.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+      const words = cleanChars.split(/\s+/).filter(Boolean);
+      if (words.length === 0) return 'user';
+      return words.join(sep);
+    };
+
+    return targetUsers.map((u) => {
+      const s = u.role === 'Siswa' ? siswaList.find((item) => item.id_user === u.id_user) : undefined;
+      const g = u.role === 'Guru Pembimbing' ? guruList.find((item) => item.id_user === u.id_user) : undefined;
+      const d = u.role === 'DUDI' ? dudiList.find((item) => item.id_dudi === u.id_dudi) : undefined;
+
+      const rawIdentitas = s?.nis
+        ? s.nis.trim()
+        : g?.nip
+        ? g.nip.trim()
+        : d?.id_dudi
+        ? d.id_dudi.toLowerCase().replace(/[^a-z0-9]/g, '')
+        : u.id_user.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      const cleanIdentitas = rawIdentitas.replace(/\s+/g, '').toLowerCase();
+
+      let previewName = u.username;
+      if (bulkUsernameMode === 'nis_nip') {
+        if (u.role === 'Siswa') previewName = cleanIdentitas || `siswa_${u.id_user.slice(-4)}`;
+        else if (u.role === 'Guru Pembimbing') previewName = cleanIdentitas || `guru_${u.id_user.slice(-4)}`;
+        else if (u.role === 'DUDI') previewName = `dudi_${cleanIdentitas}`;
+        else previewName = 'admin';
+      } else if (bulkUsernameMode === 'standard_prefix') {
+        if (u.role === 'Siswa') previewName = `siswa_${cleanIdentitas}`;
+        else if (u.role === 'Guru Pembimbing') previewName = `guru_${cleanIdentitas}`;
+        else if (u.role === 'DUDI') previewName = `dudi_${cleanIdentitas}`;
+        else previewName = 'admin_pkl';
+      } else if (bulkUsernameMode === 'custom_prefix') {
+        const p = (customUsernamePrefix || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+        previewName = p ? `${p}${cleanIdentitas}` : cleanIdentitas;
+      } else if (bulkUsernameMode === 'name_clean') {
+        previewName = cleanNameString(u.nama_lengkap, usernameSeparator) || `user_${cleanIdentitas}`;
+      } else if (bulkUsernameMode === 'firstname_num') {
+        const fName = cleanNameString(u.nama_lengkap, '').split(/[^a-z0-9]/)[0] || 'user';
+        const numPart = cleanIdentitas.slice(-4) || '123';
+        previewName = `${fName}${numPart}`;
+      }
+
+      return {
+        id_user: u.id_user,
+        nama_lengkap: u.nama_lengkap,
+        role: u.role,
+        oldUsername: u.username,
+        newUsername: previewName.toLowerCase().replace(/\s+/g, ''),
+      };
+    });
+  }, [
+    isBulkUsernameModalOpen,
+    selectedUserIds,
+    usersList,
+    bulkUsernameMode,
+    customUsernamePrefix,
+    usernameSeparator,
+    siswaList,
+    guruList,
+    dudiList,
+  ]);
 
   // Quick reset single password to NIS/NIP
   const handleQuickResetToIdentitas = (user: User) => {
@@ -395,12 +497,28 @@ export const BulkAccountManager: React.FC<BulkAccountManagerProps> = ({
             <button
               type="button"
               onClick={() => setShowAllPasswords(!showAllPasswords)}
-              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+              className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
             >
               {showAllPasswords ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
-              <span>{showAllPasswords ? 'Sembunyikan Semua Sandi' : 'Tampilkan Semua Sandi'}</span>
+              <span>{showAllPasswords ? 'Sembunyikan Sandi' : 'Tampilkan Sandi'}</span>
             </button>
 
+            {/* Atur Username Massal */}
+            <button
+              type="button"
+              disabled={selectedUserIds.length === 0}
+              onClick={() => setIsBulkUsernameModalOpen(true)}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 shadow-xs transition ${
+                selectedUserIds.length > 0
+                  ? 'bg-sky-600 hover:bg-sky-700 text-white cursor-pointer shadow-sky-600/20'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Atur Username Massal ({selectedUserIds.length})</span>
+            </button>
+
+            {/* Atur Password Massal */}
             <button
               type="button"
               disabled={selectedUserIds.length === 0}
@@ -620,6 +738,275 @@ export const BulkAccountManager: React.FC<BulkAccountManagerProps> = ({
           <span>Presensi PKL Multi-Role System</span>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL PENGATURAN USERNAME MASSAL (BULK RESET USERNAME MODAL) */}
+      {/* ========================================================================= */}
+      {isBulkUsernameModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-xl rounded-2xl p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-sky-100 text-sky-700">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Atur Username Login Massal ({selectedUserIds.length} Akun Terpilih)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Standarisasi format username login seluruh siswa, guru, maupun DUDI secara otomatis.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkUsernameModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleExecuteBulkUsername} className="space-y-4 text-xs">
+              
+              {/* Mode Selection */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-700 block">
+                  Pilih Skema Format Username Login:
+                </label>
+
+                {/* Option 1: Sesuai Identitas Asli (NIS / NIP / ID DUDI) */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                    bulkUsernameMode === 'nis_nip'
+                      ? 'bg-sky-50/80 border-sky-300 ring-2 ring-sky-500/20'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="bulkUsernameMode"
+                    value="nis_nip"
+                    checked={bulkUsernameMode === 'nis_nip'}
+                    onChange={() => setBulkUsernameMode('nis_nip')}
+                    className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                  />
+                  <div>
+                    <strong className="text-slate-900 block font-bold">
+                      Format Identitas Langsung (NIS / NIP / ID DUDI) — Direkomendasikan
+                    </strong>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Siswa menggunakan NIS murni (misal: <code className="font-mono text-sky-700 font-bold">20240101</code>), Guru menggunakan NIP (misal: <code className="font-mono text-sky-700 font-bold">198205122008011003</code>), DUDI menggunakan <code className="font-mono text-sky-700 font-bold">dudi_dud-001</code>.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Option 2: Format Standar Prefix (siswa_nis, guru_nip, dudi_id) */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                    bulkUsernameMode === 'standard_prefix'
+                      ? 'bg-sky-50/80 border-sky-300 ring-2 ring-sky-500/20'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="bulkUsernameMode"
+                    value="standard_prefix"
+                    checked={bulkUsernameMode === 'standard_prefix'}
+                    onChange={() => setBulkUsernameMode('standard_prefix')}
+                    className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                  />
+                  <div>
+                    <strong className="text-slate-900 block font-bold">
+                      Format Berawalan Peran (siswa_nis, guru_nip, dudi_id)
+                    </strong>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Contoh: <code className="font-mono text-sky-700 font-bold">siswa_20240101</code>, <code className="font-mono text-sky-700 font-bold">guru_198205122008011003</code>, <code className="font-mono text-sky-700 font-bold">dudi_dud001</code>.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Option 3: Awalan (Prefix) Kustom */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                    bulkUsernameMode === 'custom_prefix'
+                      ? 'bg-sky-50/80 border-sky-300 ring-2 ring-sky-500/20'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="bulkUsernameMode"
+                    value="custom_prefix"
+                    checked={bulkUsernameMode === 'custom_prefix'}
+                    onChange={() => setBulkUsernameMode('custom_prefix')}
+                    className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                  />
+                  <div className="flex-1">
+                    <strong className="text-slate-900 block font-bold">
+                      Awalan Kustom + Nomor Identitas
+                    </strong>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Tambahkan kode unik instansi/angkatan di depan NIS/NIP (misal: <code className="font-mono text-sky-700 font-bold">smk26_20240101</code>).
+                    </p>
+
+                    {bulkUsernameMode === 'custom_prefix' && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-600">Awalan (Prefix):</span>
+                        <input
+                          type="text"
+                          value={customUsernamePrefix}
+                          onChange={(e) => setCustomUsernamePrefix(e.target.value)}
+                          placeholder="misal: smk26_"
+                          className="flex-1 p-2 bg-white border border-sky-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-sky-500"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                {/* Option 4: Nama Lengkap Bersih (e.g. ahmad.fauzi) */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                    bulkUsernameMode === 'name_clean'
+                      ? 'bg-sky-50/80 border-sky-300 ring-2 ring-sky-500/20'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="bulkUsernameMode"
+                    value="name_clean"
+                    checked={bulkUsernameMode === 'name_clean'}
+                    onChange={() => setBulkUsernameMode('name_clean')}
+                    className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                  />
+                  <div className="flex-1">
+                    <strong className="text-slate-900 block font-bold">
+                      Nama Lengkap Bersih Tanpa Gelar
+                    </strong>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Otomatis membuang gelar (S.Kom, M.Pd, dsb.) dan menggabungkan nama (misal: <code className="font-mono text-sky-700 font-bold">ahmad.fauzi</code>).
+                    </p>
+
+                    {bulkUsernameMode === 'name_clean' && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-600">Pemisah Kata:</span>
+                        <div className="flex gap-2">
+                          {[
+                            { label: 'Titik (.)', val: '.' as const },
+                            { label: 'Underscore (_)', val: '_' as const },
+                            { label: 'Tanpa Pemisah', val: '' as const },
+                          ].map((sep) => (
+                            <button
+                              key={sep.label}
+                              type="button"
+                              onClick={() => setUsernameSeparator(sep.val)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${
+                                usernameSeparator === sep.val
+                                  ? 'bg-sky-600 text-white border-sky-600'
+                                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              {sep.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                {/* Option 5: Nama Depan + 4 Digit Identitas */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                    bulkUsernameMode === 'firstname_num'
+                      ? 'bg-sky-50/80 border-sky-300 ring-2 ring-sky-500/20'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="bulkUsernameMode"
+                    value="firstname_num"
+                    checked={bulkUsernameMode === 'firstname_num'}
+                    onChange={() => setBulkUsernameMode('firstname_num')}
+                    className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                  />
+                  <div>
+                    <strong className="text-slate-900 block font-bold">
+                      Nama Depan + 4 Digit Terakhir Identitas
+                    </strong>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Format ringkas dan mudah diingat (misal: <code className="font-mono text-sky-700 font-bold">ahmad0101</code>, <code className="font-mono text-sky-700 font-bold">budi1003</code>).
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* LIVE PREVIEW BOX */}
+              {usernamePreviewList.length > 0 && (
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-600 font-bold">
+                    <span className="flex items-center gap-1.5 text-slate-800">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                      Pratinjau Hasil Perubahan (Contoh Akun Terpilih):
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      Menampilkan {usernamePreviewList.length} sampel
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-slate-200/70">
+                    {usernamePreviewList.map((item) => (
+                      <div key={item.id_user} className="py-1.5 flex items-center justify-between gap-2">
+                        <div className="truncate max-w-[200px]">
+                          <span className="font-semibold text-slate-800 block truncate text-xs">
+                            {item.nama_lengkap}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">{item.role}</span>
+                        </div>
+                        <div className="flex items-center gap-2 font-mono text-xs">
+                          <span className="text-slate-400 line-through text-[11px]">{item.oldUsername}</span>
+                          <span className="text-slate-300">→</span>
+                          <span className="px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 font-bold border border-sky-200">
+                            {item.newUsername}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkUsernameModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-sky-600/20 cursor-pointer"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Terapkan Username ke {selectedUserIds.length} Akun</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL PENGATURAN PASSWORD MASSAL (BULK RESET PASSWORD MODAL) */}

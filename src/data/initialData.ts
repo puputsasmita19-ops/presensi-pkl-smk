@@ -84,6 +84,8 @@ export const INITIAL_DUDI: DUDI[] = [
     nama_instansi: 'PT Telkom Akses Regional V',
     bidang: 'Telekomunikasi & Jaringan Fiber Optic',
     alamat: 'Jl. Ahmad Yani No. 182, Wonokromo, Surabaya',
+    nama_pembimbing: 'Hendra Wijaya, S.T.',
+    nomor_wa_pembimbing: '081399887766',
     koordinat_lokasi: {
       latitude: -7.3056,
       longitude: 112.7358,
@@ -128,6 +130,8 @@ export const INITIAL_DUDI: DUDI[] = [
     nama_instansi: 'Software House Inovasi Digital',
     bidang: 'Software Engineering & Web Development',
     alamat: 'Gedung Cyber Tech Lt. 3, Jl. HR Muhammad No. 45, Surabaya',
+    nama_pembimbing: 'Bambang Irawan, M.Kom',
+    nomor_wa_pembimbing: '081399887767',
     koordinat_lokasi: {
       latitude: -7.2885,
       longitude: 112.6952,

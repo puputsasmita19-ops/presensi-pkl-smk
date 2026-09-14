@@ -126,11 +126,16 @@ export function syncUsersWithEntities(
     const existingIndex = updatedUsers.findIndex(
       (u) => u.id_dudi === dudi.id_dudi || u.id_user === `USR-DUDI-${dudi.id_dudi}`
     );
+    const dudiDisplayName = dudi.nama_pembimbing
+      ? `${dudi.nama_pembimbing} (${dudi.nama_instansi})`
+      : `Pembimbing DUDI ${dudi.nama_instansi}`;
+
     if (existingIndex >= 0) {
       updatedUsers[existingIndex] = {
         ...updatedUsers[existingIndex],
         id_dudi: dudi.id_dudi,
-        nama_lengkap: `Pembimbing DUDI ${dudi.nama_instansi}`,
+        nama_lengkap: dudiDisplayName,
+        nomor_wa: dudi.nomor_wa_pembimbing || updatedUsers[existingIndex].nomor_wa || '',
       };
     } else {
       const cleanId = dudi.id_dudi.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -139,8 +144,8 @@ export function syncUsersWithEntities(
         username: `dudi_${cleanId}`,
         password_hash: 'dudi123',
         role: 'DUDI',
-        nama_lengkap: `Pembimbing DUDI ${dudi.nama_instansi}`,
-        nomor_wa: '',
+        nama_lengkap: dudiDisplayName,
+        nomor_wa: dudi.nomor_wa_pembimbing || '',
         id_dudi: dudi.id_dudi,
       });
     }
@@ -255,39 +260,117 @@ export function bulkResetPasswords(
   return updated;
 }
 
+export type BulkUsernameMode =
+  | 'nis_nip'
+  | 'standard_prefix'
+  | 'custom_prefix'
+  | 'name_clean'
+  | 'firstname_num';
+
 /**
- * Reset username secara massal (misal siswa ke NIS, guru ke NIP / format standar)
+ * Reset username secara massal (misal siswa ke NIS, guru ke NIP, format standar, prefix kustom, atau nama bersih)
  */
 export function bulkResetUsernames(
   userIds: string[],
-  mode: 'nis_nip' | 'standard_prefix',
+  mode: BulkUsernameMode,
+  customPrefix: string = '',
+  nameSeparator: '.' | '_' | '' = '.',
   siswaList: Siswa[] = [],
-  guruList: GuruPembimbing[] = []
+  guruList: GuruPembimbing[] = [],
+  dudiList: DUDI[] = []
 ): User[] {
   const users = getStoredUsers();
   const idSet = new Set(userIds);
+
+  // Helper sanitizing name
+  const cleanNameString = (name: string, sep: string) => {
+    // remove academic titles like S.Kom, M.Pd, Drs., etc.
+    const titleRegex = /\b(Drs|Dra|Ir|H|Hj|S\.Kom|M\.Kom|S\.T|M\.T|S\.Pd|M\.Pd|S\.E|M\.M|Ph\.D)\b\.?/gi;
+    const withoutTitles = name.replace(titleRegex, '').trim();
+    // remove non alphanumeric except space
+    const cleanChars = withoutTitles.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const words = cleanChars.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return 'user';
+    return words.join(sep);
+  };
 
   const updated = users.map((u) => {
     if (!idSet.has(u.id_user)) return u;
 
     let newUsername = u.username;
-    if (mode === 'nis_nip') {
-      if (u.role === 'Siswa') {
-        const s = siswaList.find((item) => item.id_user === u.id_user);
-        if (s?.nis) newUsername = s.nis.trim().toLowerCase();
-      } else if (u.role === 'Guru Pembimbing') {
-        const g = guruList.find((item) => item.id_user === u.id_user);
-        if (g?.nip) newUsername = g.nip.trim().toLowerCase();
+
+    // Retrieve corresponding entity
+    const s = u.role === 'Siswa' ? siswaList.find((item) => item.id_user === u.id_user) : undefined;
+    const g = u.role === 'Guru Pembimbing' ? guruList.find((item) => item.id_user === u.id_user) : undefined;
+    const d = u.role === 'DUDI' ? dudiList.find((item) => item.id_dudi === u.id_dudi) : undefined;
+
+    const rawIdentitas = s?.nis
+      ? s.nis.trim()
+      : g?.nip
+      ? g.nip.trim()
+      : d?.id_dudi
+      ? d.id_dudi.toLowerCase().replace(/[^a-z0-9]/g, '')
+      : u.id_user.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const cleanIdentitas = rawIdentitas.replace(/\s+/g, '').toLowerCase();
+
+    switch (mode) {
+      case 'nis_nip': {
+        if (u.role === 'Siswa') {
+          newUsername = cleanIdentitas || `siswa_${u.id_user.slice(-4)}`;
+        } else if (u.role === 'Guru Pembimbing') {
+          newUsername = cleanIdentitas || `guru_${u.id_user.slice(-4)}`;
+        } else if (u.role === 'DUDI') {
+          newUsername = `dudi_${cleanIdentitas}`;
+        } else {
+          newUsername = 'admin';
+        }
+        break;
       }
-    } else if (mode === 'standard_prefix') {
-      if (u.role === 'Siswa') {
-        const s = siswaList.find((item) => item.id_user === u.id_user);
-        if (s?.nis) newUsername = `siswa_${s.nis.trim().toLowerCase()}`;
-      } else if (u.role === 'Guru Pembimbing') {
-        const g = guruList.find((item) => item.id_user === u.id_user);
-        if (g?.nip) newUsername = `guru_${g.nip.trim().toLowerCase()}`;
+
+      case 'standard_prefix': {
+        if (u.role === 'Siswa') {
+          newUsername = `siswa_${cleanIdentitas}`;
+        } else if (u.role === 'Guru Pembimbing') {
+          newUsername = `guru_${cleanIdentitas}`;
+        } else if (u.role === 'DUDI') {
+          newUsername = `dudi_${cleanIdentitas}`;
+        } else {
+          newUsername = 'admin_pkl';
+        }
+        break;
       }
+
+      case 'custom_prefix': {
+        const prefix = (customPrefix || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+        if (u.role === 'Admin') {
+          newUsername = prefix ? `${prefix}admin` : 'admin';
+        } else {
+          newUsername = prefix ? `${prefix}${cleanIdentitas}` : cleanIdentitas;
+        }
+        break;
+      }
+
+      case 'name_clean': {
+        const sanitized = cleanNameString(u.nama_lengkap, nameSeparator);
+        newUsername = sanitized || `user_${cleanIdentitas}`;
+        break;
+      }
+
+      case 'firstname_num': {
+        const firstName = cleanNameString(u.nama_lengkap, '').split(/[^a-z0-9]/)[0] || 'user';
+        const numPart = cleanIdentitas.slice(-4) || '123';
+        newUsername = `${firstName}${numPart}`;
+        break;
+      }
+
+      default:
+        break;
     }
+
+    // Ensure username is clean lowercase
+    newUsername = newUsername.toLowerCase().replace(/\s+/g, '');
+
     return { ...u, username: newUsername };
   });
 
@@ -330,7 +413,9 @@ export function exportCredentialsToCsv(
     } else if (u.role === 'DUDI') {
       const d = dudiList.find((item) => item.id_dudi === u.id_dudi);
       identitas = u.id_dudi || '-';
-      infoTambahan = d ? d.nama_instansi : '-';
+      infoTambahan = d
+        ? `${d.nama_instansi}${d.nama_pembimbing ? ` (PIC: ${d.nama_pembimbing})` : ''}`
+        : '-';
     } else {
       identitas = 'Admin PKL';
       infoTambahan = 'Administrator Sistem';

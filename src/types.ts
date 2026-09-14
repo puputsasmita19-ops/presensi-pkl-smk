@@ -57,6 +57,8 @@ export interface DUDI {
   nama_instansi: string;
   bidang: string;
   alamat: string;
+  nama_pembimbing?: string; // Nama Pembimbing / Penanggung Jawab DUDI
+  nomor_wa_pembimbing?: string; // Nomor HP / WhatsApp Pembimbing DUDI
   koordinat_lokasi: {
     latitude: number;
     longitude: number;

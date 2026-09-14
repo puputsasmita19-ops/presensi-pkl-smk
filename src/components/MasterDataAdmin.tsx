@@ -175,6 +175,8 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
     nama_instansi: string;
     bidang: string;
     alamat: string;
+    nama_pembimbing: string;
+    nomor_wa_pembimbing: string;
     latitude: number;
     longitude: number;
     radius_meter: number;
@@ -188,6 +190,8 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
     nama_instansi: '',
     bidang: '',
     alamat: '',
+    nama_pembimbing: '',
+    nomor_wa_pembimbing: '',
     latitude: -7.3056,
     longitude: 112.7358,
     radius_meter: 150,
@@ -240,6 +244,8 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
         nama_instansi: dudi.nama_instansi,
         bidang: dudi.bidang,
         alamat: dudi.alamat,
+        nama_pembimbing: dudi.nama_pembimbing || '',
+        nomor_wa_pembimbing: dudi.nomor_wa_pembimbing || '',
         latitude: dudi.koordinat_lokasi.latitude,
         longitude: dudi.koordinat_lokasi.longitude,
         radius_meter: dudi.radius_meter,
@@ -269,6 +275,8 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
         nama_instansi: '',
         bidang: '',
         alamat: '',
+        nama_pembimbing: '',
+        nomor_wa_pembimbing: '',
         latitude: -7.3056,
         longitude: 112.7358,
         radius_meter: 150,
@@ -368,6 +376,8 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
       nama_instansi: dudiForm.nama_instansi,
       bidang: dudiForm.bidang,
       alamat: dudiForm.alamat,
+      nama_pembimbing: dudiForm.nama_pembimbing.trim() || undefined,
+      nomor_wa_pembimbing: dudiForm.nomor_wa_pembimbing.trim() || undefined,
       koordinat_lokasi: {
         latitude: Number(dudiForm.latitude),
         longitude: Number(dudiForm.longitude),
@@ -638,9 +648,10 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
               <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
                 <tr>
                   <th className="p-3">ID / Instansi</th>
+                  <th className="p-3">Pembimbing / PIC DUDI</th>
                   <th className="p-3">Bidang & Alamat</th>
                   <th className="p-3">Hari Kerja & Sistem</th>
-                  <th className="p-3">Daftar Shift / Jam Kondisional</th>
+                  <th className="p-3">Daftar Shift / Jam Kerja</th>
                   <th className="p-3">Radius Geo</th>
                   <th className="p-3 text-right">Aksi</th>
                 </tr>
@@ -651,6 +662,37 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
                     <td className="p-3">
                       <span className="font-mono text-[10px] text-slate-400 block">{d.id_dudi}</span>
                       <strong className="text-slate-800">{d.nama_instansi}</strong>
+                    </td>
+                    <td className="p-3">
+                      {d.nama_pembimbing ? (
+                        <div className="space-y-0.5">
+                          <span className="font-semibold text-slate-800 block text-xs">
+                            {d.nama_pembimbing}
+                          </span>
+                          {d.nomor_wa_pembimbing ? (
+                            <a
+                              href={`https://wa.me/${d.nomor_wa_pembimbing.replace(/\D/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900 font-medium hover:underline"
+                            >
+                              <Phone className="w-3 h-3 text-emerald-600" />
+                              <span>{d.nomor_wa_pembimbing}</span>
+                            </a>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Tanpa No. HP</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-0.5">
+                          <span className="text-slate-400 text-[11px] italic">Belum diatur</span>
+                          {d.nomor_wa_pembimbing && (
+                            <span className="text-[11px] text-slate-500 block font-mono">
+                              {d.nomor_wa_pembimbing}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 max-w-[180px]">
                       <span className="text-sky-700 font-medium block">{d.bidang}</span>
@@ -1084,6 +1126,43 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
                     className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                     required
                   />
+                </div>
+              </div>
+
+              {/* Pembimbing / Penanggung Jawab DUDI & Kontak */}
+              <div className="bg-sky-50/60 p-3 rounded-xl border border-sky-200/70 space-y-2">
+                <div className="flex items-center gap-1.5 text-sky-900 font-bold">
+                  <Users className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Pembimbing / Penanggung Jawab DUDI &amp; Kontak:</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Nama Pembimbing / PIC DUDI:
+                    </label>
+                    <input
+                      type="text"
+                      value={dudiForm.nama_pembimbing}
+                      onChange={(e) => setDudiForm({ ...dudiForm, nama_pembimbing: e.target.value })}
+                      placeholder="Contoh: Hendra Wijaya, S.T."
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Nomor HP / WhatsApp Pembimbing DUDI:
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        value={dudiForm.nomor_wa_pembimbing}
+                        onChange={(e) => setDudiForm({ ...dudiForm, nomor_wa_pembimbing: e.target.value })}
+                        placeholder="081399887766"
+                        className="w-full pl-8 pr-2 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
