@@ -104,6 +104,7 @@ export interface Presensi {
   synced_at?: string;
   drive_file_id?: string;
   drive_view_url?: string;
+  image_sync_status?: 'synced' | 'pending-image-sync' | 'not-applicable' | string;
 
   // Persetujuan Presensi oleh Pembimbing DUDI
   status_persetujuan_dudi?: StatusPersetujuanDudi;
@@ -156,6 +157,7 @@ export interface KunjunganGuru {
   status_kunjungan: 'Selesai' | 'Berlangsung';
   drive_file_id?: string;
   drive_view_url?: string;
+  image_sync_status?: 'synced' | 'pending-image-sync' | 'not-applicable' | string;
   synced_to_db?: boolean;
 }
 
