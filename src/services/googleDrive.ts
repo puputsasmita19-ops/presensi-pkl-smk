@@ -56,11 +56,13 @@ export const resetCachedPklFolderId = () => {
 
 // ================= FOLDER KHUSUS SISWA =================
 export const getCachedFolderSiswaId = (): string | null => {
-  if (cachedFolderSiswaId && cachedFolderSiswaId.trim()) return cachedFolderSiswaId.trim();
+  if (cachedFolderSiswaId && cachedFolderSiswaId.trim() && cachedFolderSiswaId !== DEFAULT_PKL_FOLDER_ID) {
+    return cachedFolderSiswaId.trim();
+  }
   if (typeof window !== 'undefined') {
     try {
       const saved = localStorage.getItem('pkl_gdrive_folder_siswa_id');
-      if (saved && saved.trim()) {
+      if (saved && saved.trim() && saved.trim() !== DEFAULT_PKL_FOLDER_ID) {
         cachedFolderSiswaId = saved.trim();
         return saved.trim();
       }
@@ -70,10 +72,11 @@ export const getCachedFolderSiswaId = (): string | null => {
 };
 
 export const setCachedFolderSiswaId = (folderId: string) => {
-  cachedFolderSiswaId = folderId.trim();
+  const cleanId = folderId.trim();
+  cachedFolderSiswaId = cleanId;
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem('pkl_gdrive_folder_siswa_id', cachedFolderSiswaId);
+      localStorage.setItem('pkl_gdrive_folder_siswa_id', cleanId);
     } catch {}
   }
 };
@@ -89,11 +92,13 @@ export const resetCachedFolderSiswaId = () => {
 
 // ================= FOLDER KHUSUS GURU =================
 export const getCachedFolderGuruId = (): string | null => {
-  if (cachedFolderGuruId && cachedFolderGuruId.trim()) return cachedFolderGuruId.trim();
+  if (cachedFolderGuruId && cachedFolderGuruId.trim() && cachedFolderGuruId !== DEFAULT_PKL_FOLDER_ID) {
+    return cachedFolderGuruId.trim();
+  }
   if (typeof window !== 'undefined') {
     try {
       const saved = localStorage.getItem('pkl_gdrive_folder_guru_id');
-      if (saved && saved.trim()) {
+      if (saved && saved.trim() && saved.trim() !== DEFAULT_PKL_FOLDER_ID) {
         cachedFolderGuruId = saved.trim();
         return saved.trim();
       }
@@ -103,10 +108,11 @@ export const getCachedFolderGuruId = (): string | null => {
 };
 
 export const setCachedFolderGuruId = (folderId: string) => {
-  cachedFolderGuruId = folderId.trim();
+  const cleanId = folderId.trim();
+  cachedFolderGuruId = cleanId;
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem('pkl_gdrive_folder_guru_id', cachedFolderGuruId);
+      localStorage.setItem('pkl_gdrive_folder_guru_id', cleanId);
     } catch {}
   }
 };
@@ -121,28 +127,19 @@ export const resetCachedFolderGuruId = () => {
 };
 
 /**
- * Buat atau cari subfolder di dalam folder parent tertentu
+ * Buat atau cari folder independen berdasarkan nama di Google Drive pengguna
  */
-export const getOrCreateSubFolder = async (
-  folderName: string,
-  parentFolderId?: string
-): Promise<string> => {
+export const getOrCreateFolderByName = async (folderName: string): Promise<string> => {
   const token = getCachedAccessToken();
   if (!token) {
-    return parentFolderId || DEFAULT_PKL_FOLDER_ID;
+    return '';
   }
 
-  const effectiveParent = parentFolderId || getCachedPklFolderId();
-
   try {
-    let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-    if (effectiveParent && effectiveParent !== 'root') {
-      query += ` and '${effectiveParent}' in parents`;
-    }
-
+    // 1. Cari apakah folder dengan nama ini sudah ada di Google Drive pengguna
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
-      query
-    )}&fields=files(id,name,webViewLink)`;
+      `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+    )}&fields=files(id,name,webViewLink)&pageSize=10`;
 
     const searchRes = await fetch(searchUrl, {
       headers: { Authorization: `Bearer ${token}` },
@@ -151,41 +148,37 @@ export const getOrCreateSubFolder = async (
     if (searchRes.ok) {
       const searchData = await searchRes.json();
       if (searchData.files && searchData.files.length > 0) {
-        return searchData.files[0].id;
+        const foundFolderId = searchData.files[0].id;
+        makeDriveFilePublic(foundFolderId).catch(() => {});
+        return foundFolderId;
       }
     }
 
-    // Jika belum ada, buat subfolder baru
-    const bodyPayload: Record<string, any> = {
-      name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
-    };
-    if (effectiveParent && effectiveParent !== 'root') {
-      bodyPayload.parents = [effectiveParent];
-    }
-
+    // 2. Jika belum ada, buat folder baru di root Drive pengguna
     const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(bodyPayload),
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+      }),
     });
 
     if (createRes.ok) {
       const created = await createRes.json();
       if (created.id) {
-        // Berikan izin view agar dapat diakses
         makeDriveFilePublic(created.id).catch(() => {});
         return created.id;
       }
     }
   } catch (e) {
-    console.warn(`Gagal mencari/membuat folder ${folderName}:`, e);
+    console.warn(`Gagal mencari/membuat folder "${folderName}" di Google Drive:`, e);
   }
 
-  return effectiveParent || DEFAULT_PKL_FOLDER_ID;
+  return '';
 };
 
 /**
@@ -193,17 +186,17 @@ export const getOrCreateSubFolder = async (
  */
 export const getOrCreateSiswaPresensiFolder = async (): Promise<string> => {
   const cached = getCachedFolderSiswaId();
-  if (cached && cached.trim()) {
+  if (cached && cached.trim() && cached !== DEFAULT_PKL_FOLDER_ID) {
     return cached.trim();
   }
 
-  const parentFolderId = await getOrCreatePklFolder();
-  const folderId = await getOrCreateSubFolder(FOLDER_NAME_SISWA, parentFolderId);
+  const folderId = await getOrCreateFolderByName(FOLDER_NAME_SISWA);
   if (folderId) {
     setCachedFolderSiswaId(folderId);
     return folderId;
   }
-  return parentFolderId;
+
+  return getCachedPklFolderId();
 };
 
 /**
@@ -211,17 +204,17 @@ export const getOrCreateSiswaPresensiFolder = async (): Promise<string> => {
  */
 export const getOrCreateGuruPresensiFolder = async (): Promise<string> => {
   const cached = getCachedFolderGuruId();
-  if (cached && cached.trim()) {
+  if (cached && cached.trim() && cached !== DEFAULT_PKL_FOLDER_ID) {
     return cached.trim();
   }
 
-  const parentFolderId = await getOrCreatePklFolder();
-  const folderId = await getOrCreateSubFolder(FOLDER_NAME_GURU, parentFolderId);
+  const folderId = await getOrCreateFolderByName(FOLDER_NAME_GURU);
   if (folderId) {
     setCachedFolderGuruId(folderId);
     return folderId;
   }
-  return parentFolderId;
+
+  return getCachedPklFolderId();
 };
 
 /**

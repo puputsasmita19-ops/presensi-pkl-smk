@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { INITIAL_SISWA, INITIAL_GURU } from '../data/initialData';
 import { getStoredUsers } from '../utils/userManagement';
+import { getAndClearAutoLogoutNotice } from '../utils/sessionManager';
 import { AdminHelpModal } from './AdminHelpModal';
 import {
   Lock,
@@ -9,6 +10,7 @@ import {
   UserCheck,
   Building2,
   ShieldCheck,
+  ShieldAlert,
   Eye,
   EyeOff,
   LogIn,
@@ -20,6 +22,7 @@ import {
   RotateCcw,
   Sun,
   Moon,
+  X,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -27,6 +30,7 @@ interface LoginPageProps {
   onOpenWhatsAppHelp?: () => void;
   isDarkMode?: boolean;
   onToggleDarkMode?: () => void;
+  autoLogoutNotice?: string | null;
 }
 
 export type LoginPilihanRole = 'Guru' | 'Siswa' | 'DUDI' | 'Admin';
@@ -42,7 +46,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onOpenWhatsAppHelp,
   isDarkMode = false,
   onToggleDarkMode,
+  autoLogoutNotice = null,
 }) => {
+  const [securityNotice, setSecurityNotice] = useState<string | null>(() => {
+    return autoLogoutNotice || getAndClearAutoLogoutNotice();
+  });
+
+  useEffect(() => {
+    if (autoLogoutNotice) {
+      setSecurityNotice(autoLogoutNotice);
+    }
+  }, [autoLogoutNotice]);
+
   const [selectedRole, setSelectedRole] = useState<LoginPilihanRole>(() => {
     try {
       const saved = localStorage.getItem('pkl_login_selected_role') as LoginPilihanRole;
@@ -322,6 +337,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         {/* Minimalist Login Card */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/80 rounded-2xl shadow-xl shadow-slate-200/70 dark:shadow-2xl dark:shadow-black/60 p-5 sm:p-6 transition-colors duration-200">
+          
+          {/* Auto-logout security notice banner */}
+          {securityNotice && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in duration-200">
+              <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex-1 leading-relaxed">
+                <span className="font-bold block text-amber-800 dark:text-amber-300">
+                  Keamanan Sesi Aplikasi
+                </span>
+                <span className="text-[11px] text-amber-700 dark:text-amber-300/90">
+                  {securityNotice}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSecurityNotice(null)}
+                className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 p-0.5 cursor-pointer"
+                title="Tutup Pesan"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Role Choice Selector: Guru, Siswa, DUDI */}
           {selectedRole !== 'Admin' ? (
             <div className="mb-4">

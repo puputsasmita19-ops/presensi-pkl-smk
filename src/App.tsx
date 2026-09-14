@@ -106,11 +106,27 @@ import {
   getStoredActiveTab,
   saveActiveTab,
   ROLE_ALLOWED_TABS,
+  isSessionExpiredDueToInactivity,
+  setAutoLogoutNotice,
 } from './utils/sessionManager';
+import { useAutoLogout } from './hooks/useAutoLogout';
+import { AutoLogoutWarningModal } from './components/AutoLogoutWarningModal';
 
 export default function App() {
   // Ambil sesi autentikasi awal yang persisten dari multi-tier storage (localStorage, sessionStorage, cookie)
-  const initialSession = useMemo(() => getStoredSession(), []);
+  const initialSession = useMemo(() => {
+    const session = getStoredSession();
+    if (session.isAuthenticated) {
+      if (isSessionExpiredDueToInactivity()) {
+        clearUserSession();
+        setAutoLogoutNotice(
+          'Sesi Anda sebelumnya telah diakhiri otomatis karena tidak ada aktivitas selama 30 menit demi perlindungan data siswa.'
+        );
+        return { isAuthenticated: false, user: null };
+      }
+    }
+    return session;
+  }, []);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
     () => initialSession.isAuthenticated
@@ -717,6 +733,29 @@ export default function App() {
     // Tautan Google Drive tetap tersimpan dan tidak terputus saat logout dari aplikasi
     setIsAuthenticated(false);
   };
+
+  // Auto-logout otomatis saat tidak ada aktivitas selama 30 menit demi keamanan data siswa
+  const handleAutoLogout = useCallback(() => {
+    addLog(
+      'Autentikasi',
+      'Auto-Logout Keamanan (30 Menit Tidak Aktif)',
+      `Sesi ${currentUser.nama_lengkap} (${currentUser.role}) otomatis diakhiri karena tidak ada aktivitas selama 30 menit demi perlindungan data siswa.`,
+      'Peringatan',
+      currentUser,
+      'Security Auto-Logout'
+    );
+    setAutoLogoutNotice(
+      'Sesi Anda telah berakhir otomatis demi keamanan data siswa (30 menit tanpa aktivitas). Silakan login kembali.'
+    );
+    clearUserSession();
+    setIsAuthenticated(false);
+  }, [currentUser]);
+
+  // Hook monitor inaktivitas 30 menit
+  const { showWarningModal, remainingSeconds, stayLoggedIn } = useAutoLogout({
+    enabled: isAuthenticated,
+    onAutoLogout: handleAutoLogout,
+  });
 
   // Switch role helper
   const handleRoleChange = (newRole: Role) => {
@@ -1340,6 +1379,14 @@ export default function App() {
         presensiList={presensiList}
         onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
         onSaveSiswa={handleSaveSiswa}
+      />
+
+      {/* Modal Peringatan Keamanan Auto-Logout 30 Menit */}
+      <AutoLogoutWarningModal
+        isOpen={showWarningModal}
+        remainingSeconds={remainingSeconds}
+        onStayLoggedIn={stayLoggedIn}
+        onLogoutNow={handleLogout}
       />
 
       {/* Floating Network & Sync Toast */}

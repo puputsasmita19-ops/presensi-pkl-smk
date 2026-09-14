@@ -4,8 +4,90 @@ export const AUTH_KEY = 'pkl_is_authenticated';
 export const USER_KEY = 'pkl_current_user';
 export const TAB_KEY = 'pkl_active_tab';
 export const ROLE_KEY = 'pkl_user_role';
+export const LAST_ACTIVITY_KEY = 'pkl_last_activity_timestamp';
+export const AUTO_LOGOUT_NOTICE_KEY = 'pkl_auto_logout_notice';
 const COOKIE_USER_KEY = 'pkl_session_user';
 const COOKIE_AUTH_KEY = 'pkl_session_auth';
+
+// 30 Menit Auto-Logout Inactivity Timeout
+export const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 menit (1.800.000 ms)
+export const WARNING_BEFORE_LOGOUT_MS = 2 * 60 * 1000; // Peringatan 2 menit sebelum logout (120.000 ms)
+
+/**
+ * Catat aktivitas pengguna terbaru (timestamp)
+ */
+export function recordUserActivity(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const nowStr = Date.now().toString();
+    localStorage.setItem(LAST_ACTIVITY_KEY, nowStr);
+  } catch (e) {
+    // ignore
+  }
+}
+
+/**
+ * Dapatkan timestamp aktivitas pengguna terakhir
+ */
+export function getLastActivityTimestamp(): number {
+  if (typeof window === 'undefined') return Date.now();
+  try {
+    const raw = localStorage.getItem(LAST_ACTIVITY_KEY);
+    if (raw) {
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return Date.now();
+}
+
+/**
+ * Periksa apakah sesi telah kedaluwarsa karena tidak aktif selama 30 menit
+ */
+export function isSessionExpiredDueToInactivity(): boolean {
+  const lastActive = getLastActivityTimestamp();
+  const elapsed = Date.now() - lastActive;
+  return elapsed >= INACTIVITY_TIMEOUT_MS;
+}
+
+/**
+ * Hitung sisa waktu inaktivitas (milidetik) hingga auto-logout
+ */
+export function getInactivityRemainingMs(): number {
+  const lastActive = getLastActivityTimestamp();
+  const elapsed = Date.now() - lastActive;
+  const remaining = INACTIVITY_TIMEOUT_MS - elapsed;
+  return remaining > 0 ? remaining : 0;
+}
+
+/**
+ * Simpan pesan notifikasi auto-logout agar ditampilkan di halaman login
+ */
+export function setAutoLogoutNotice(notice: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(AUTO_LOGOUT_NOTICE_KEY, notice);
+  } catch {}
+}
+
+/**
+ * Ambil dan bersihkan pesan notifikasi auto-logout
+ */
+export function getAndClearAutoLogoutNotice(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const notice = sessionStorage.getItem(AUTO_LOGOUT_NOTICE_KEY);
+    if (notice) {
+      sessionStorage.removeItem(AUTO_LOGOUT_NOTICE_KEY);
+      return notice;
+    }
+  } catch {}
+  return null;
+}
 
 export const ROLE_ALLOWED_TABS: Record<Role, string[]> = {
   Siswa: ['presensi', 'statistik', 'jurnal', 'laporan', 'info-pkl'],
@@ -145,6 +227,7 @@ export function saveUserSession(user: User): void {
   if (typeof window === 'undefined') return;
 
   const userJson = JSON.stringify(user);
+  recordUserActivity();
 
   try {
     localStorage.setItem(AUTH_KEY, 'true');
@@ -181,6 +264,7 @@ export function clearUserSession(): void {
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(ROLE_KEY);
     localStorage.removeItem(TAB_KEY);
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
   } catch (e) {
     // ignore
   }
