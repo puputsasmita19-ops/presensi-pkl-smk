@@ -45,18 +45,36 @@ export const listDriveFiles = async (folderId?: string): Promise<DriveFileItem[]
 
 let cachedPklFolderId: string | null = null;
 
-export const getCachedPklFolderId = (): string | null => cachedPklFolderId;
+export const getCachedPklFolderId = (): string | null => {
+  if (cachedPklFolderId) return cachedPklFolderId;
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pkl_gdrive_folder_id');
+      if (saved) {
+        cachedPklFolderId = saved;
+        return saved;
+      }
+    } catch {}
+  }
+  return null;
+};
 
 export const resetCachedPklFolderId = () => {
   cachedPklFolderId = null;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('pkl_gdrive_folder_id');
+    } catch {}
+  }
 };
 
 /**
  * Create or locate a folder in Google Drive named "Presensi & Jurnal PKL SMK"
  */
 export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL SMK'): Promise<string> => {
-  if (cachedPklFolderId) {
-    return cachedPklFolderId;
+  const existingFolderId = getCachedPklFolderId();
+  if (existingFolderId) {
+    return existingFolderId;
   }
 
   const token = getCachedAccessToken();
@@ -77,6 +95,11 @@ export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL S
     const searchData = await searchRes.json();
     if (searchData.files && searchData.files.length > 0) {
       cachedPklFolderId = searchData.files[0].id;
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('pkl_gdrive_folder_id', cachedPklFolderId);
+        } catch {}
+      }
       return searchData.files[0].id;
     }
   }
@@ -100,6 +123,11 @@ export const getOrCreatePklFolder = async (folderName = 'Presensi & Jurnal PKL S
 
   const folderData = await createRes.json();
   cachedPklFolderId = folderData.id;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('pkl_gdrive_folder_id', cachedPklFolderId);
+    } catch {}
+  }
   return folderData.id;
 };
 

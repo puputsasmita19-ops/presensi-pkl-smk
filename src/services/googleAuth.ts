@@ -72,10 +72,15 @@ export const getCachedAccessToken = (): string | null => {
   if (cachedAccessToken) return cachedAccessToken;
   if (typeof window !== 'undefined') {
     try {
-      const stored = sessionStorage.getItem('pkl_gdrive_access_token');
-      if (stored) {
-        cachedAccessToken = stored;
-        return stored;
+      const storedLocal = localStorage.getItem('pkl_gdrive_access_token');
+      if (storedLocal) {
+        cachedAccessToken = storedLocal;
+        return storedLocal;
+      }
+      const storedSession = sessionStorage.getItem('pkl_gdrive_access_token');
+      if (storedSession) {
+        cachedAccessToken = storedSession;
+        return storedSession;
       }
     } catch {}
   }
@@ -87,12 +92,20 @@ export const setCachedAccessToken = (token: string | null) => {
   if (typeof window !== 'undefined') {
     try {
       if (token) {
+        localStorage.setItem('pkl_gdrive_access_token', token);
         sessionStorage.setItem('pkl_gdrive_access_token', token);
+        localStorage.setItem('pkl_gdrive_is_connected', 'true');
       } else {
+        localStorage.removeItem('pkl_gdrive_access_token');
         sessionStorage.removeItem('pkl_gdrive_access_token');
+        localStorage.removeItem('pkl_gdrive_is_connected');
       }
     } catch {}
   }
+};
+
+export const isGoogleDriveLinked = (): boolean => {
+  return !!getCachedAccessToken() || !!getConnectedGoogleUser();
 };
 
 export const getConnectedGoogleUser = (): GoogleUserProfile | null => {

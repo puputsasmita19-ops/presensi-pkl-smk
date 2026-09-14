@@ -50,7 +50,7 @@ import { WhatsAppFonnteModal } from './components/WhatsAppFonnteModal';
 import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
 import { DatabaseModal } from './components/DatabaseModal';
 import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
-import { getCachedAccessToken, logoutGoogle } from './services/googleAuth';
+import { getCachedAccessToken, isGoogleDriveLinked } from './services/googleAuth';
 import {
   getOfflineQueue,
   saveToOfflineQueue,
@@ -98,7 +98,7 @@ export default function App() {
   });
 
   const [isGoogleConnected, setIsGoogleConnected] = useState<boolean>(() => {
-    return !!getCachedAccessToken();
+    return isGoogleDriveLinked();
   });
 
   // State Status Koneksi Backend & Database MySQL / TiDB
@@ -334,7 +334,7 @@ export default function App() {
 
   // Inisialisasi status koneksi Google Drive saat aplikasi dimuat
   useEffect(() => {
-    setIsGoogleConnected(!!getCachedAccessToken());
+    setIsGoogleConnected(isGoogleDriveLinked());
   }, []);
 
   // Initialize offline queue from localStorage on mount
@@ -496,7 +496,7 @@ export default function App() {
     setActiveTab(targetTab);
     saveActiveTab(targetTab);
 
-    setIsGoogleConnected(googleConnected || !!getCachedAccessToken());
+    setIsGoogleConnected(googleConnected || isGoogleDriveLinked());
     addLog(
       'Autentikasi',
       'Login Akun Berhasil',
@@ -528,9 +528,8 @@ export default function App() {
       currentUser
     );
     clearUserSession();
-    logoutGoogle();
+    // Tautan Google Drive tetap tersimpan dan tidak terputus saat logout dari aplikasi
     setIsAuthenticated(false);
-    setIsGoogleConnected(false);
   };
 
   // Switch role helper
