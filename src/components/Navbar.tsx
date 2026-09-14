@@ -257,54 +257,22 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
-          {/* Status Backend & Database MySQL / TiDB Cloud - Khusus Admin */}
+          {/* Status Database Firebase Firestore - Khusus Admin */}
           {currentUser.role === 'Admin' && onOpenDatabaseModal && (
             <button
               id="btn-open-database-status"
               type="button"
               onClick={onOpenDatabaseModal}
-              className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 ${
-                dbStatus?.connected
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                  : dbStatus?.configured
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                  : 'bg-slate-800/90 text-indigo-300 border-slate-700 hover:text-white hover:bg-slate-700'
-              }`}
-              title={
-                dbStatus?.connected
-                  ? `Database: ${dbStatus.isTiDB ? 'TiDB Cloud Online' : 'MySQL Online'} (Latency: ${dbStatus.latencyMs ?? 0}ms). Klik untuk cek detail.`
-                  : dbStatus?.configured
-                  ? 'Database MySQL: Gagal tersambung ke host. Klik untuk cek diagnostik.'
-                  : 'Database MySQL / TiDB: Siap dikonfigurasi. Klik untuk panduan online.'
-              }
-              aria-label="Status Database MySQL"
+              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30"
+              title="Database: Firebase Firestore Realtime. Klik untuk cek sinkronisasi dokumen & status cloud."
+              aria-label="Status Database Firestore"
             >
               <div className="relative flex items-center justify-center">
-                <Database
-                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
-                    dbStatus?.connected
-                      ? 'text-emerald-400'
-                      : dbStatus?.configured
-                      ? 'text-amber-400'
-                      : 'text-indigo-400'
-                  }`}
-                />
-                <span
-                  className={`absolute -top-1 -right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border border-slate-900 ${
-                    dbStatus?.connected
-                      ? 'bg-emerald-400 animate-pulse'
-                      : dbStatus?.configured
-                      ? 'bg-amber-400'
-                      : 'bg-indigo-400'
-                  }`}
-                />
+                <Database className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                <span className="absolute -top-1 -right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border border-slate-900 bg-emerald-400 animate-pulse" />
               </div>
               <span className="hidden lg:inline text-[11px] font-semibold">
-                {dbStatus?.connected
-                  ? dbStatus.isTiDB
-                    ? 'TiDB Online'
-                    : 'MySQL Online'
-                  : 'DB MySQL'}
+                Firestore
               </span>
             </button>
           )}

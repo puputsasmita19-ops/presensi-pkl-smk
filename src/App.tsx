@@ -66,20 +66,22 @@ import {
 } from './services/indexedDbService';
 import { getInitialTheme, applyTheme } from './utils/theme';
 import {
-  fetchSiswaFromDb,
-  saveSiswaToDb,
-  deleteSiswaFromDb,
-  fetchDudiFromDb,
-  saveDudiToDb,
-  fetchPresensiFromDb,
-  savePresensiToDb,
-  fetchJurnalFromDb,
-  saveJurnalToDb,
-  fetchKunjunganFromDb,
-  saveKunjunganToDb,
-  checkDbConnection,
-  DbStatusResponse,
-} from './utils/apiService';
+  subscribeSiswa,
+  subscribeDudi,
+  subscribeGuru,
+  subscribePresensi,
+  subscribeJurnal,
+  subscribeKunjungan,
+  subscribeLogs,
+  saveSiswaToFirestore,
+  deleteSiswaFromFirestore,
+  saveDudiToFirestore,
+  deleteDudiFromFirestore,
+  saveGuruToFirestore,
+  saveJurnalToFirestore,
+  saveLogToFirestore,
+  seedInitialDataToFirestore,
+} from './services/firestoreService';
 
 import {
   getStoredSession,
@@ -109,28 +111,8 @@ export default function App() {
     return isGoogleDriveLinked();
   });
 
-  // State Status Koneksi Backend & Database MySQL / TiDB
-  const [dbStatus, setDbStatus] = useState<DbStatusResponse | null>(null);
+  // State Status Koneksi Backend & Modal Database Firestore
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState<boolean>(false);
-
-  const refreshDbStatus = useCallback(async () => {
-    try {
-      const res = await checkDbConnection();
-      setDbStatus(res);
-    } catch {
-      setDbStatus({
-        connected: false,
-        configured: false,
-        message: 'Server backend offline',
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshDbStatus();
-    const interval = setInterval(refreshDbStatus, 25000);
-    return () => clearInterval(interval);
-  }, [refreshDbStatus]);
 
   // Dark Mode / Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(getInitialTheme);
@@ -358,12 +340,11 @@ export default function App() {
     setPendingOfflineQueue(getOfflineQueue());
   }, []);
 
-  // Memuat data terbaru dari Backend Server & IndexedDB lokal saat aplikasi dimuat
+  // Memuat data dari IndexedDB lokal dan berlangganan realtime updates dari Firebase Firestore
   useEffect(() => {
     let isMounted = true;
-    const loadFromDatabase = async () => {
+    const loadFromIndexedDb = async () => {
       try {
-        // 1. Muat dari IndexedDB terlebih dahulu (foto & data lokal offline)
         const [idbPresensi, idbKunjungan] = await Promise.all([
           getAllPresensiFromIndexedDb().catch(() => []),
           getAllKunjunganFromIndexedDb().catch(() => []),
@@ -401,77 +382,95 @@ export default function App() {
             });
           }
         }
-
-        // 2. Muat data dari Backend API (MySQL / Server Local DB)
-        const [dbSiswa, dbDudi, dbPresensi, dbJurnal, dbKunjungan] = await Promise.all([
-          fetchSiswaFromDb(),
-          fetchDudiFromDb(),
-          fetchPresensiFromDb(),
-          fetchJurnalFromDb(),
-          fetchKunjunganFromDb(),
-        ]);
-
-        if (!isMounted) return;
-
-        if (dbSiswa && dbSiswa.length > 0) {
-          setSiswaList(dbSiswa);
-        }
-        if (dbDudi && dbDudi.length > 0) {
-          setDudiList(dbDudi);
-        }
-        if (dbPresensi && dbPresensi.length > 0) {
-          setPresensiList((prev) => {
-            const map = new Map<string, Presensi>();
-            prev.forEach((p) => map.set(p.id_presensi, p));
-            dbPresensi.forEach((p) => {
-              const existing = map.get(p.id_presensi);
-              if (existing) {
-                map.set(p.id_presensi, {
-                  ...existing,
-                  ...p,
-                  foto_selfie: p.foto_selfie || existing.foto_selfie,
-                });
-              } else {
-                map.set(p.id_presensi, p);
-              }
-            });
-            return Array.from(map.values());
-          });
-        }
-        if (dbJurnal && dbJurnal.length > 0) {
-          setJurnalList(dbJurnal);
-        }
-        if (dbKunjungan && dbKunjungan.length > 0) {
-          setKunjunganGuruList((prev) => {
-            const map = new Map<string, KunjunganGuru>();
-            prev.forEach((k) => map.set(k.id_kunjungan, k));
-            dbKunjungan.forEach((k) => {
-              const existing = map.get(k.id_kunjungan);
-              if (existing) {
-                map.set(k.id_kunjungan, {
-                  ...existing,
-                  ...k,
-                  foto_kunjungan: k.foto_kunjungan || existing.foto_kunjungan,
-                });
-              } else {
-                map.set(k.id_kunjungan, k);
-              }
-            });
-            return Array.from(map.values());
-          });
-        }
       } catch (err) {
-        console.info('Penyimpanan lokal aktif (Server DB / IndexedDB standby).');
+        console.warn('Gagal memuat dari IndexedDB:', err);
       }
     };
 
-    loadFromDatabase();
+    loadFromIndexedDb();
+
+    // Berlangganan Realtime Updates dari Firebase Firestore
+    const unsubSiswa = subscribeSiswa((data) => {
+      if (data && data.length > 0) {
+        setSiswaList(data);
+      } else if (data && data.length === 0) {
+        // Auto-seed data awal jika Firestore masih kosong
+        seedInitialDataToFirestore({
+          siswa: INITIAL_SISWA,
+          dudi: INITIAL_DUDI,
+          guru: INITIAL_GURU,
+          presensi: INITIAL_PRESENSI,
+          jurnal: INITIAL_JURNAL,
+          users: INITIAL_USERS,
+          logs: [],
+          kunjungan: [],
+        }).catch(console.warn);
+      }
+    });
+    const unsubDudi = subscribeDudi((data) => {
+      if (data && data.length > 0) setDudiList(data);
+    });
+    const unsubGuru = subscribeGuru((data) => {
+      if (data && data.length > 0) setGuruList(data);
+    });
+    const unsubPresensi = subscribePresensi((data) => {
+      if (data && data.length > 0) {
+        setPresensiList((prev) => {
+          const map = new Map<string, Presensi>();
+          prev.forEach((p) => map.set(p.id_presensi, p));
+          data.forEach((p) => {
+            const existing = map.get(p.id_presensi);
+            if (existing) {
+              map.set(p.id_presensi, {
+                ...existing,
+                ...p,
+                foto_selfie: p.foto_selfie || existing.foto_selfie,
+              });
+            } else {
+              map.set(p.id_presensi, p);
+            }
+          });
+          return Array.from(map.values());
+        });
+      }
+    });
+    const unsubJurnal = subscribeJurnal((data) => {
+      if (data && data.length > 0) setJurnalList(data);
+    });
+    const unsubKunjungan = subscribeKunjungan((data) => {
+      if (data && data.length > 0) {
+        setKunjunganGuruList((prev) => {
+          const map = new Map<string, KunjunganGuru>();
+          prev.forEach((k) => map.set(k.id_kunjungan, k));
+          data.forEach((k) => {
+            const existing = map.get(k.id_kunjungan);
+            if (existing) {
+              map.set(k.id_kunjungan, {
+                ...existing,
+                ...k,
+                foto_kunjungan: k.foto_kunjungan || existing.foto_kunjungan,
+              });
+            } else {
+              map.set(k.id_kunjungan, k);
+            }
+          });
+          return Array.from(map.values());
+        });
+      }
+    });
+
     return () => {
       isMounted = false;
+      unsubSiswa();
+      unsubDudi();
+      unsubGuru();
+      unsubPresensi();
+      unsubJurnal();
+      unsubKunjungan();
     };
   }, []);
 
-  // Function to sync offline presensi queue to Database MySQL / TiDB Cloud
+  // Function to sync offline presensi queue to Firebase Firestore
   const triggerSyncToDatabase = async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       setSyncToastMessage('Tidak dapat menyinkronkan: Perangkat sedang dalam mode offline.');
@@ -509,26 +508,26 @@ export default function App() {
       if (result.successCount > 0) {
         addLog(
           'Presensi',
-          'Sinkronisasi Database Berhasil',
-          `Koneksi pulih. Berhasil mengirim ${result.successCount} data presensi offline dari perangkat ke Database MySQL / TiDB Cloud.`,
+          'Sinkronisasi Firestore Berhasil',
+          `Koneksi pulih. Berhasil mengirim ${result.successCount} data presensi offline dari perangkat ke Firebase Firestore.`,
           'Sukses',
           currentUser,
-          'Database Cloud Sync'
+          'Firestore Realtime Sync'
         );
         setSyncToastMessage(
-          `Koneksi stabil! ${result.successCount} data presensi berhasil disinkronkan ke Database MySQL/TiDB.`
+          `Koneksi stabil! ${result.successCount} data presensi berhasil disinkronkan ke Firebase Firestore.`
         );
         setTimeout(() => setSyncToastMessage(null), 6000);
       }
     } catch (err: any) {
-      console.error('Error saat menyinkronkan data offline ke database:', err);
+      console.error('Error saat menyinkronkan data offline ke firestore:', err);
       addLog(
         'Presensi',
-        'Sinkronisasi Database Tertunda',
+        'Sinkronisasi Firestore Tertunda',
         `Gagal menyinkronkan: ${err?.message || 'Koneksi terganggu'}. Data tetap aman tersimpan di perangkat lokal.`,
         'Peringatan',
         currentUser,
-        'Database Sync'
+        'Firestore Sync'
       );
     } finally {
       setIsSyncing(false);
@@ -679,18 +678,18 @@ export default function App() {
     if (savedPresensi.is_offline_pending) {
       setPendingOfflineQueue(getOfflineQueue());
       setSyncToastMessage(
-        'Mode Offline: Presensi berhasil disimpan di perangkat. Akan otomatis disinkronkan ke Google Drive & Database MySQL saat online.'
+        'Mode Offline: Presensi berhasil disimpan di perangkat. Akan otomatis disinkronkan ke Google Drive & Firebase Firestore saat online.'
       );
       setTimeout(() => setSyncToastMessage(null), 7000);
     }
 
-    // Catat log aktivitas sistem dengan detail status Drive & TiDB/MySQL
+    // Catat log aktivitas sistem dengan detail status Drive & Firestore
     let logDetail = `Presensi ${savedPresensi.status} (${savedPresensi.jam_masuk || savedPresensi.jam_pulang || ''}).`;
     if (report.driveSuccess) {
       logDetail += ' Foto tersimpan di Google Drive (OAuth).';
     }
     if (report.databaseSuccess) {
-      logDetail += ` Data tercatat di MySQL/TiDB Cloud.`;
+      logDetail += ` Data tercatat di Firebase Firestore.`;
     } else {
       logDetail += ` Data disimpan di cache offline lokal perangkat.`;
     }
@@ -701,7 +700,7 @@ export default function App() {
       logDetail,
       report.databaseSuccess ? (savedPresensi.koordinat_absen.dalam_radius ? 'Sukses' : 'Peringatan') : 'Peringatan',
       currentUser,
-      report.databaseSuccess ? (report.driveSuccess ? 'Drive + TiDB/MySQL' : 'TiDB/MySQL') : 'Offline Cache'
+      report.databaseSuccess ? (report.driveSuccess ? 'Drive + Firestore' : 'Firestore') : 'Offline Cache'
     );
 
     // Handle WhatsApp Dispatch via Fonnte (if online)
@@ -733,8 +732,8 @@ export default function App() {
   const handleSaveJurnal = (jurnal: JurnalHarian) => {
     setJurnalList((prev) => [jurnal, ...prev]);
 
-    // Simpan ke database MySQL Online jika aktif
-    saveJurnalToDb(jurnal).catch(console.error);
+    // Simpan ke Firebase Firestore Realtime
+    saveJurnalToFirestore(jurnal).catch(console.error);
 
     addLog(
       'Jurnal',
@@ -752,11 +751,14 @@ export default function App() {
     catatan: string
   ) => {
     const timeNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    let updatedJurnalTarget: JurnalHarian | undefined;
+
     setJurnalList((prev) =>
       prev.map((j) => {
         if (j.id_jurnal !== idJurnal) return j;
+        let updated: JurnalHarian;
         if (reviewerRole === 'DUDI') {
-          return {
+          updated = {
             ...j,
             status_validasi_dudi: status,
             catatan_dudi: catatan,
@@ -764,7 +766,7 @@ export default function App() {
             nama_dudi_penilai: currentUser.nama_lengkap,
           };
         } else {
-          return {
+          updated = {
             ...j,
             status_validasi_guru: status,
             catatan_guru: catatan,
@@ -772,8 +774,15 @@ export default function App() {
             nama_guru_penilai: currentUser.nama_lengkap,
           };
         }
+        updatedJurnalTarget = updated;
+        return updated;
       })
     );
+
+    if (updatedJurnalTarget) {
+      saveJurnalToFirestore(updatedJurnalTarget).catch(console.error);
+    }
+
     addLog(
       'Jurnal',
       `Validasi Jurnal oleh ${reviewerRole}`,
@@ -783,9 +792,9 @@ export default function App() {
     );
   };
 
-  // Kunjungan Guru Handler: Menyimpan ke Google Drive (foto supervisi) & Database MySQL
+  // Kunjungan Guru Handler: Menyimpan ke Google Drive (foto supervisi) & Firestore
   const handleSaveKunjunganGuru = async (kunjungan: KunjunganGuru) => {
-    // Eksekusi Pipeline Penyimpanan Terpadu Kunjungan Guru (Google Drive OAuth -> MySQL/TiDB -> State)
+    // Eksekusi Pipeline Penyimpanan Terpadu Kunjungan Guru (Google Drive OAuth -> Firestore -> State)
     const { kunjungan: savedKunjungan, report } = await executeUnifiedKunjunganSave(kunjungan);
 
     setKunjunganGuruList((prev) => {
@@ -803,7 +812,7 @@ export default function App() {
       logDetail += ' Foto bukti supervisi tersimpan di Google Drive.';
     }
     if (report.databaseSuccess) {
-      logDetail += ' Data tercatat di database MySQL.';
+      logDetail += ' Data tercatat di Firestore Realtime.';
     }
 
     addLog(
@@ -812,7 +821,7 @@ export default function App() {
       logDetail,
       'Sukses',
       currentUser,
-      report.driveSuccess ? 'Drive + Database' : 'Database/Lokal'
+      report.driveSuccess ? 'Drive + Firestore' : 'Firestore'
     );
   };
 
@@ -824,17 +833,19 @@ export default function App() {
   ) => {
     const timeNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
     setPresensiList((prev) =>
-      prev.map((p) =>
-        p.id_presensi === idPresensi
-          ? {
-              ...p,
-              status_persetujuan_dudi: status,
-              catatan_dudi: catatanDudi,
-              disetujui_dudi_pada: timeNow,
-              nama_pembimbing_dudi: currentUser.nama_lengkap,
-            }
-          : p
-      )
+      prev.map((p) => {
+        if (p.id_presensi !== idPresensi) return p;
+        const updated = {
+          ...p,
+          status_persetujuan_dudi: status,
+          catatan_dudi: catatanDudi,
+          disetujui_dudi_pada: timeNow,
+          nama_pembimbing_dudi: currentUser.nama_lengkap,
+        };
+        // Simpan langsung ke unified storage / Firestore
+        executeUnifiedPresensiSave(updated, updated.nama_siswa || 'Siswa').catch(console.error);
+        return updated;
+      })
     );
     addLog(
       'Presensi',
@@ -857,16 +868,16 @@ export default function App() {
       return [...prev, siswa];
     });
 
-    // Simpan ke database MySQL backend online jika server aktif
-    saveSiswaToDb(siswa).then((success) => {
+    // Simpan ke Firestore Realtime Database
+    saveSiswaToFirestore(siswa).then((success) => {
       if (success) {
         addLog(
           'Master Data',
-          'Sinkronisasi Siswa ke MySQL',
-          `Data siswa ${siswa.nama_lengkap} (NIS: ${siswa.nis}) berhasil disimpan ke database MySQL online.`,
+          'Sinkronisasi Siswa ke Firestore',
+          `Data siswa ${siswa.nama_lengkap} (NIS: ${siswa.nis}) berhasil disimpan ke Firestore realtime.`,
           'Sukses',
           currentUser,
-          'MySQL Database'
+          'Firestore DB'
         );
       }
     });
@@ -874,7 +885,7 @@ export default function App() {
 
   const handleDeleteSiswa = (id_siswa: string) => {
     setSiswaList((prev) => prev.filter((s) => s.id_siswa !== id_siswa));
-    deleteSiswaFromDb(id_siswa).catch(console.error);
+    deleteSiswaFromFirestore(id_siswa).catch(console.error);
   };
 
   const handleSaveDUDI = (dudi: DUDI) => {
@@ -888,12 +899,13 @@ export default function App() {
       return [...prev, dudi];
     });
 
-    // Simpan ke database MySQL backend online
-    saveDudiToDb(dudi).catch(console.error);
+    // Simpan ke Firestore Realtime Database
+    saveDudiToFirestore(dudi).catch(console.error);
   };
 
   const handleDeleteDUDI = (id_dudi: string) => {
     setDudiList((prev) => prev.filter((d) => d.id_dudi !== id_dudi));
+    deleteDudiFromFirestore(id_dudi).catch(console.error);
   };
 
   const handleSaveGuru = (guru: GuruPembimbing) => {
@@ -906,6 +918,7 @@ export default function App() {
       }
       return [...prev, guru];
     });
+    saveGuruToFirestore(guru).catch(console.error);
   };
 
   const handleDeleteGuru = (id_guru: string) => {
@@ -999,7 +1012,6 @@ export default function App() {
         onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
         onOpenGoogleDrive={() => setIsGoogleDriveModalOpen(true)}
         onOpenDatabaseModal={() => setIsDatabaseModalOpen(true)}
-        dbStatus={dbStatus}
         onLogout={handleLogout}
         isGoogleConnected={isGoogleConnected}
         isOnline={isOnline}
@@ -1178,16 +1190,19 @@ export default function App() {
         />
       )}
 
-      {/* Database MySQL / TiDB Modal - Khusus Admin */}
+      {/* Database Firebase Firestore Modal - Khusus Admin */}
       {currentUser.role === 'Admin' && (
         <DatabaseModal
           isOpen={isDatabaseModalOpen}
           onClose={() => setIsDatabaseModalOpen(false)}
           siswaList={siswaList}
           dudiList={dudiList}
+          guruList={guruList}
           presensiList={presensiList}
           jurnalList={jurnalList}
-          onRefreshData={refreshDbStatus}
+          users={INITIAL_USERS}
+          logs={logs}
+          kunjunganList={kunjunganGuruList}
         />
       )}
 

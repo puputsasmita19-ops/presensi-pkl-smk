@@ -1,9 +1,9 @@
 /**
  * Service untuk mengelola antrean presensi saat offline
- * dan melakukan sinkronisasi otomatis ke Database MySQL / TiDB Cloud saat online
+ * dan melakukan sinkronisasi otomatis ke Firebase Firestore saat online
  */
 import { Presensi } from '../types';
-import { savePresensiToDb } from '../utils/apiService';
+import { savePresensiToFirestore as saveToFirestoreDoc } from './firestoreService';
 
 export const OFFLINE_QUEUE_KEY = 'pkl_offline_presensi_queue';
 
@@ -52,7 +52,7 @@ export const saveToOfflineQueue = (presensi: Presensi): Presensi[] => {
 };
 
 /**
- * Menghapus data presensi dari antrean offline setelah berhasil terkirim ke Database MySQL/TiDB
+ * Menghapus data presensi dari antrean offline setelah berhasil terkirim ke Firestore
  */
 export const removeFromOfflineQueue = (id_presensi: string): Presensi[] => {
   try {
@@ -67,7 +67,7 @@ export const removeFromOfflineQueue = (id_presensi: string): Presensi[] => {
 };
 
 /**
- * Mengirim satu record presensi langsung ke Database MySQL / TiDB Cloud
+ * Mengirim satu record presensi langsung ke Firebase Firestore
  */
 export const savePresensiToDatabase = async (presensi: Presensi): Promise<void> => {
   const cleanPayload: Presensi = {
@@ -90,14 +90,14 @@ export const savePresensiToDatabase = async (presensi: Presensi): Promise<void> 
     synced_at: new Date().toISOString(),
   };
 
-  const success = await savePresensiToDb(cleanPayload);
+  const success = await saveToFirestoreDoc(cleanPayload);
   if (!success) {
-    throw new Error('Gagal menyimpan ke Database MySQL/TiDB (Endpoint /api/presensi tidak merespons sukses).');
+    throw new Error('Gagal menyimpan ke Firebase Firestore.');
   }
 };
 
 /**
- * Melakukan sinkronisasi otomatis seluruh antrean offline ke Database MySQL / TiDB Cloud
+ * Melakukan sinkronisasi otomatis seluruh antrean offline ke Firebase Firestore
  * ketika koneksi internet kembali online / stabil
  */
 export const syncOfflinePresensiToDatabase = async (
@@ -133,15 +133,14 @@ export const syncOfflinePresensiToDatabase = async (
       onItemSynced?.(syncedItem);
       successCount++;
     } catch (err: any) {
-      console.error(`Gagal menyinkronkan presensi ${item.id_presensi} ke Database:`, err);
+      console.error(`Gagal menyinkronkan presensi ${item.id_presensi} ke Firestore:`, err);
       failedCount++;
-      errors.push(err?.message || 'Gagal mengirim ke database online');
+      errors.push(err?.message || 'Gagal mengirim ke Firestore database');
     }
   }
 
   return { successCount, failedCount, syncedRecords, errors };
 };
 
-// Alias untuk backward compatibility jika ada file lain yang memanggil nama lama
 export const savePresensiToFirestore = savePresensiToDatabase;
 export const syncOfflinePresensiToFirebase = syncOfflinePresensiToDatabase;

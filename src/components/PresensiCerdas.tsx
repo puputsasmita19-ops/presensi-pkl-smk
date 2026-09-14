@@ -604,14 +604,14 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
       if (!isOnline) {
         alert(
           selectedStatus === 'Hadir'
-            ? `[MODE OFFLINE] Presensi Masuk berhasil dicatat (${timeStr} WIB) dan diamankan di penyimpanan lokal. Foto & data akan otomatis disinkronkan ke Google Drive & Database saat kembali online!`
+            ? `[MODE OFFLINE] Presensi Masuk berhasil dicatat (${timeStr} WIB) dan diamankan di penyimpanan lokal. Foto & data akan otomatis disinkronkan ke Google Drive & Firestore saat kembali online!`
             : `[MODE OFFLINE] Laporan ${selectedStatus} tersimpan sementara di penyimpanan lokal perangkat.`
         );
       } else {
         alert(
           selectedStatus === 'Hadir'
-            ? `Presensi Masuk berhasil dicatat pada ${timeStr} WIB (${selectedShift?.nama_shift || 'Shift'} - ${punctualityCheck.deskripsi})! Foto diunggah ke Google Drive dan data tersimpan di Database MySQL/TiDB.`
-            : `Laporan ${selectedStatus} berhasil dikirim ke Database MySQL/TiDB!`
+            ? `Presensi Masuk berhasil dicatat pada ${timeStr} WIB (${selectedShift?.nama_shift || 'Shift'} - ${punctualityCheck.deskripsi})! Foto tersimpan dan data tersinkronisasi ke Firebase Firestore & Google Drive.`
+            : `Laporan ${selectedStatus} berhasil dikirim ke Firebase Firestore!`
         );
       }
     } catch (err: any) {
