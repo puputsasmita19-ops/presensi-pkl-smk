@@ -50,7 +50,13 @@ import { WhatsAppFonnteModal } from './components/WhatsAppFonnteModal';
 import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
 import { DatabaseModal } from './components/DatabaseModal';
 import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
-import { getCachedAccessToken, isGoogleDriveLinked } from './services/googleAuth';
+import {
+  getCachedAccessToken,
+  setCachedAccessToken,
+  setConnectedGoogleUser,
+  isGoogleDriveLinked,
+} from './services/googleAuth';
+import { setCachedPklFolderId } from './services/googleDrive';
 import {
   getOfflineQueue,
   saveToOfflineQueue,
@@ -77,6 +83,7 @@ import {
   subscribeJurnal,
   subscribeKunjungan,
   subscribeLogs,
+  subscribeGoogleDriveConfig,
   saveSiswaToFirestore,
   deleteSiswaFromFirestore,
   saveDudiToFirestore,
@@ -463,6 +470,23 @@ export default function App() {
       }
     });
 
+    const unsubDriveConfig = subscribeGoogleDriveConfig((cfg) => {
+      if (cfg && cfg.accessToken) {
+        setCachedAccessToken(cfg.accessToken);
+        if (cfg.folderId) {
+          setCachedPklFolderId(cfg.folderId);
+        }
+        if (cfg.userEmail) {
+          setConnectedGoogleUser({
+            displayName: cfg.userName || 'Pengguna Google Drive',
+            email: cfg.userEmail,
+            photoURL: cfg.userPhoto || '',
+          });
+        }
+        setIsGoogleConnected(true);
+      }
+    });
+
     return () => {
       isMounted = false;
       unsubSiswa();
@@ -471,6 +495,7 @@ export default function App() {
       unsubPresensi();
       unsubJurnal();
       unsubKunjungan();
+      unsubDriveConfig();
     };
   }, []);
 

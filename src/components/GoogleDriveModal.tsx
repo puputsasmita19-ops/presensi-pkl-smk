@@ -15,13 +15,17 @@ import {
   listDriveFiles,
   uploadFileToDrive,
   getOrCreatePklFolder,
+  getCachedPklFolderId,
+  setCachedPklFolderId,
   resetCachedPklFolderId,
+  DEFAULT_PKL_FOLDER_ID,
   DriveFileItem,
 } from '../services/googleDrive';
 import {
   uploadPresensiPhotoToDrive,
   uploadKunjunganPhotoToDrive,
 } from '../services/unifiedStorageService';
+import { saveGoogleDriveConfigToFirestore } from '../services/firestoreService';
 import {
   CompressionPreset,
   getSavedCompressionPreset,
@@ -80,7 +84,8 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   const [connectedUser, setConnectedUser] = useState<GoogleUserProfile | null>(null);
   const [clientIdInput, setClientIdInput] = useState<string>('');
   const [manualTokenInput, setManualTokenInput] = useState<string>('');
-  const [pklFolderId, setPklFolderId] = useState<string | null>(null);
+  const [pklFolderId, setPklFolderId] = useState<string>(getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID);
+  const [folderIdInput, setFolderIdInput] = useState<string>(getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID);
   const [files, setFiles] = useState<DriveFileItem[]>([]);
   const [showAdvancedOAuth, setShowAdvancedOAuth] = useState<boolean>(false);
   const [copiedFolderId, setCopiedFolderId] = useState<boolean>(false);
@@ -99,18 +104,30 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       setIsOAuthConnected(!!token);
       setConnectedUser(getConnectedGoogleUser());
 
+      const currentFolder = getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID;
+      setPklFolderId(currentFolder);
+      setFolderIdInput(currentFolder);
+
       if (token) {
         fetchOAuthFiles();
         loadPklFolderInfo();
       } else {
         setTimeout(() => {
-          renderGoogleSignInButton('gsi-official-button-container', (profile) => {
+          renderGoogleSignInButton('gsi-official-button-container', async (profile, idToken) => {
             setIsOAuthConnected(true);
             setConnectedUser(profile);
             if (onConnectionChange) onConnectionChange(true);
             setStatusMsg({
               type: 'success',
               text: `Berhasil login dengan ${profile.displayName} (${profile.email}). Akun Google aktif!`,
+            });
+            await saveGoogleDriveConfigToFirestore({
+              accessToken: idToken,
+              folderId: getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID,
+              userEmail: profile.email,
+              userName: profile.displayName,
+              userPhoto: profile.photoURL,
+              updatedAt: new Date().toISOString(),
             });
             loadPklFolderInfo();
             fetchOAuthFiles();
@@ -124,8 +141,9 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     try {
       const fid = await getOrCreatePklFolder();
       setPklFolderId(fid);
+      setFolderIdInput(fid);
     } catch (e) {
-      console.warn('Folder PKL Google Drive belum siap:', e);
+      console.warn('Folder PKL Google Drive:', e);
     }
   };
 
@@ -155,6 +173,14 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
           type: 'success',
           text: 'Akun Google Drive berhasil terhubung! Foto presensi siswa dan berkas cadangan otomatis tersimpan di Google Drive.',
         });
+        await saveGoogleDriveConfigToFirestore({
+          accessToken: token,
+          folderId: getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID,
+          userEmail: user?.email,
+          userName: user?.displayName,
+          userPhoto: user?.photoURL,
+          updatedAt: new Date().toISOString(),
+        });
         await loadPklFolderInfo();
         await fetchOAuthFiles();
       }
@@ -173,9 +199,17 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     resetCachedPklFolderId();
     setIsOAuthConnected(false);
     setConnectedUser(null);
-    setPklFolderId(null);
+    setPklFolderId(DEFAULT_PKL_FOLDER_ID);
+    setFolderIdInput(DEFAULT_PKL_FOLDER_ID);
     setFiles([]);
     if (onConnectionChange) onConnectionChange(false);
+    await saveGoogleDriveConfigToFirestore({
+      accessToken: '',
+      folderId: DEFAULT_PKL_FOLDER_ID,
+      userEmail: '',
+      userName: '',
+      updatedAt: new Date().toISOString(),
+    });
     setStatusMsg({
       type: 'success',
       text: 'Koneksi akun Google Drive berhasil diputuskan.',
@@ -191,13 +225,53 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
     setCachedAccessToken(trimmed);
     setIsOAuthConnected(true);
     if (onConnectionChange) onConnectionChange(true);
+    await saveGoogleDriveConfigToFirestore({
+      accessToken: trimmed,
+      folderId: getCachedPklFolderId() || DEFAULT_PKL_FOLDER_ID,
+      updatedAt: new Date().toISOString(),
+    });
     setStatusMsg({
       type: 'success',
-      text: 'Akses token Google berhasil diterapkan!',
+      text: 'Akses token Google berhasil diterapkan dan disinkronkan ke seluruh sistem!',
     });
     setManualTokenInput('');
     await loadPklFolderInfo();
     await fetchOAuthFiles();
+  };
+
+  const handleSaveCustomFolderId = async () => {
+    const trimmed = folderIdInput.trim() || DEFAULT_PKL_FOLDER_ID;
+    setCachedPklFolderId(trimmed);
+    setPklFolderId(trimmed);
+    setFolderIdInput(trimmed);
+    await saveGoogleDriveConfigToFirestore({
+      folderId: trimmed,
+      updatedAt: new Date().toISOString(),
+    });
+    setStatusMsg({
+      type: 'success',
+      text: `ID Folder Google Drive berhasil diperbarui: "${trimmed}". Semua foto baru dan sinkronisasi akan langsung tersimpan di folder ini.`,
+    });
+    if (isOAuthConnected) {
+      await fetchOAuthFiles();
+    }
+  };
+
+  const handleResetDefaultFolderId = async () => {
+    setCachedPklFolderId(DEFAULT_PKL_FOLDER_ID);
+    setPklFolderId(DEFAULT_PKL_FOLDER_ID);
+    setFolderIdInput(DEFAULT_PKL_FOLDER_ID);
+    await saveGoogleDriveConfigToFirestore({
+      folderId: DEFAULT_PKL_FOLDER_ID,
+      updatedAt: new Date().toISOString(),
+    });
+    setStatusMsg({
+      type: 'success',
+      text: `ID Folder Google Drive dikembalikan ke folder resmi: "${DEFAULT_PKL_FOLDER_ID}".`,
+    });
+    if (isOAuthConnected) {
+      await fetchOAuthFiles();
+    }
   };
 
   const handleSyncAllPhotosToDrive = async () => {
@@ -550,53 +624,67 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
             )}
           </div>
 
-          {/* Info Folder Google Drive */}
-          {isOAuthConnected && (
-            <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/40 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
-                    Folder Penyimpanan: &quot;Presensi &amp; Jurnal PKL SMK&quot;
-                  </span>
-                </div>
-                {pklFolderId && (
-                  <a
-                    href={`https://drive.google.com/drive/folders/${pklFolderId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sky-600 dark:text-sky-400 hover:bg-slate-50 text-[11px] font-semibold flex items-center gap-1.5 transition shadow-2xs"
-                  >
-                    <span>Buka di Google Drive</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
+          {/* Info Folder Google Drive & Konfigurasi ID Folder */}
+          <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/40 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                  Folder Google Drive Tujuan
+                </span>
               </div>
-
-              {pklFolderId ? (
-                <div className="flex items-center gap-2 text-[11px]">
-                  <span className="text-slate-500 dark:text-slate-400 shrink-0 font-medium">
-                    ID Folder Drive:
-                  </span>
-                  <code className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-[11px] text-slate-700 dark:text-slate-300 truncate max-w-xs">
-                    {pklFolderId}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyFolderId(pklFolderId)}
-                    className="p-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
-                    title="Salin ID Folder"
-                  >
-                    {copiedFolderId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Folder khusus akan dibuat otomatis saat pertama kali foto presensi atau cadangan diunggah.
-                </p>
-              )}
+              <a
+                href={`https://drive.google.com/drive/folders/${pklFolderId || DEFAULT_PKL_FOLDER_ID}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sky-600 dark:text-sky-400 hover:bg-slate-50 dark:hover:bg-slate-700 text-[11px] font-semibold flex items-center gap-1.5 transition shadow-2xs"
+              >
+                <span>Buka Folder di Google Drive</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
-          )}
+
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                ID Folder Google Drive (Default &amp; Prioritas):
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={folderIdInput}
+                  onChange={(e) => setFolderIdInput(e.target.value)}
+                  placeholder="ID Folder Google Drive..."
+                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-800 dark:text-slate-200"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveCustomFolderId}
+                  className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition"
+                >
+                  Terapkan
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetDefaultFolderId}
+                  className="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition"
+                  title="Kembalikan ke ID Folder Bawaan (16J6-5viU-CVCconsfFTNtrMCNMx-0HNz)"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCopyFolderId(pklFolderId || DEFAULT_PKL_FOLDER_ID)}
+                  className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white bg-white dark:bg-slate-800 cursor-pointer shrink-0"
+                  title="Salin ID Folder"
+                >
+                  {copiedFolderId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Semua foto presensi siswa &amp; backup database otomatis diarahkan ke ID folder ini.
+              </p>
+            </div>
+          </div>
 
           {/* Pengaturan Lanjutan (Advanced OAuth) */}
           <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">

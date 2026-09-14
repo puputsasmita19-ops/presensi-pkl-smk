@@ -355,3 +355,38 @@ export async function seedInitialDataToFirestore(data: {
     };
   }
 }
+
+// ================= GOOGLE DRIVE CONFIG =================
+export interface GoogleDriveConfig {
+  accessToken?: string;
+  folderId?: string;
+  userEmail?: string;
+  userName?: string;
+  userPhoto?: string;
+  updatedAt?: string;
+}
+
+export async function saveGoogleDriveConfigToFirestore(config: GoogleDriveConfig): Promise<boolean> {
+  try {
+    await setDoc(doc(db, COLLECTIONS.CONFIG, 'google_drive'), config, { merge: true });
+    return true;
+  } catch (err) {
+    console.warn('Gagal menyimpan config Google Drive ke Firestore:', err);
+    return false;
+  }
+}
+
+export function subscribeGoogleDriveConfig(callback: (config: GoogleDriveConfig | null) => void) {
+  return onSnapshot(
+    doc(db, COLLECTIONS.CONFIG, 'google_drive'),
+    (snap) => {
+      if (snap.exists()) {
+        callback(snap.data() as GoogleDriveConfig);
+      } else {
+        callback(null);
+      }
+    },
+    (err) => console.warn('Firestore Google Drive Config listener warning:', err)
+  );
+}
+
