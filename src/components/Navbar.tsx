@@ -309,7 +309,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="btn-toggle-dark-mode"
               type="button"
               onClick={(e) => onToggleDarkMode(e)}
-              className="relative w-8 h-8 sm:w-9 sm:h-9 text-slate-300 hover:text-amber-300 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 group active:scale-95 overflow-hidden shadow-2xs"
+              className="relative w-8 h-8 sm:w-9 sm:h-9 text-slate-300 hover:text-amber-300 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 group active:scale-95 overflow-hidden shadow-2xs touch-manipulation select-none"
               title={isDarkMode ? 'Beralih ke Mode Terang (Light Mode)' : 'Beralih ke Mode Gelap (Dark Mode)'}
               aria-label={isDarkMode ? 'Beralih ke Mode Terang' : 'Beralih ke Mode Gelap'}
             >

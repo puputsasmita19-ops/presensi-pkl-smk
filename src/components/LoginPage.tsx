@@ -308,7 +308,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           id="btn-login-toggle-theme"
           type="button"
           onClick={(e) => onToggleDarkMode(e)}
-          className="absolute top-4 right-4 px-3 py-2 rounded-xl bg-white/95 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-300 hover:bg-slate-50 dark:hover:bg-slate-800/90 transition-colors cursor-pointer flex items-center gap-2 text-xs z-20 shadow-sm backdrop-blur-xs font-medium active:scale-95 overflow-hidden"
+          className="absolute top-4 right-4 px-3 py-2 rounded-xl bg-white/95 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-300 hover:bg-slate-50 dark:hover:bg-slate-800/90 transition-colors cursor-pointer flex items-center gap-2 text-xs z-20 shadow-sm backdrop-blur-xs font-medium active:scale-95 overflow-hidden touch-manipulation select-none"
           title={isDarkMode ? 'Beralih ke Mode Terang' : 'Beralih ke Mode Gelap'}
         >
           <AnimatePresence mode="wait" initial={false}>
