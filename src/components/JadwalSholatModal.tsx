@@ -108,11 +108,6 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
     setReminderConfig(updated);
   };
 
-  const handleToggleSound = () => {
-    const updated = savePrayerReminderConfig({ soundEnabled: !reminderConfig.soundEnabled });
-    setReminderConfig(updated);
-  };
-
   const handleToggleAdhanSound = () => {
     const updated = savePrayerReminderConfig({ adhanSoundEnabled: !reminderConfig.adhanSoundEnabled });
     setReminderConfig(updated);
@@ -564,7 +559,7 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
               </div>
 
               {/* Toggles Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                 {/* Master Pop-up Toggle */}
                 <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2 min-w-0">
@@ -637,44 +632,6 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                       aria-hidden="true"
                       className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
                         reminderConfig.adhanSoundEnabled ? 'translate-x-4' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Sound Chime Toggle */}
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {reminderConfig.soundEnabled ? (
-                      <Volume2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <VolumeX className="w-4 h-4 text-slate-500 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-white">
-                        Nada Chime
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate">
-                        {reminderConfig.soundEnabled ? 'Melodi lembut' : 'Mode senyap'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    id="btn-toggle-reminder-sound"
-                    onClick={handleToggleSound}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      reminderConfig.soundEnabled ? 'bg-emerald-600' : 'bg-slate-700'
-                    }`}
-                    role="switch"
-                    aria-checked={reminderConfig.soundEnabled}
-                    title="Aktifkan atau Matikan Suara Nada Pengingat"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        reminderConfig.soundEnabled ? 'translate-x-4' : 'translate-x-0'
                       }`}
                     />
                   </button>

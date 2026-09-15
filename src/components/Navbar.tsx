@@ -133,15 +133,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
     return (
       <div
-        className="marquee-container w-full max-w-[140px] xs:max-w-[190px] sm:max-w-[280px] md:max-w-[360px] select-none py-0.5"
+        className="marquee-container w-full overflow-hidden select-none py-0.5 relative min-w-0"
         title={statusText}
       >
         {/* Soft edge blur masks so the running text enters and leaves seamlessly */}
         <div className="pointer-events-none absolute inset-y-0 left-0 w-2.5 bg-gradient-to-r from-slate-800 to-transparent z-10" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-3.5 bg-gradient-to-l from-slate-800 to-transparent z-10" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-3 bg-gradient-to-l from-slate-800 to-transparent z-10" />
 
         {/* Marquee Animation Track */}
-        <div className="animate-running-marquee-nav flex items-center gap-6 whitespace-nowrap text-xs">
+        <div className="animate-running-marquee-nav flex items-center gap-6 whitespace-nowrap text-xs will-change-transform">
           <span className="font-bold text-slate-200 shrink-0 inline-flex items-center gap-1">
             <span className="text-white">{name}</span>
             <span className="text-sky-400 font-semibold text-[11px]">({roleLabel})</span>
@@ -168,6 +168,27 @@ export const Navbar: React.FC<NavbarProps> = ({
   // App Branding & Identity (Nama Aplikasi & Logo Kustom)
   const { branding, updateBranding, resetBranding } = useAppBranding();
   const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
+
+  // State untuk Dropdown Alat Admin pada Layar HP/Mobile agar icon tidak bertabrakan
+  const [isAdminToolsOpen, setIsAdminToolsOpen] = useState(false);
+  const adminToolsRef = useRef<HTMLDivElement | null>(null);
+
+  // Tutup dropdown alat admin saat klik di luar
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (adminToolsRef.current && !adminToolsRef.current.contains(e.target as Node)) {
+        setIsAdminToolsOpen(false);
+      }
+    };
+    if (isAdminToolsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isAdminToolsOpen]);
 
   const renderNavbarLogo = () => {
     if (branding.logoUrl) {
@@ -213,49 +234,49 @@ export const Navbar: React.FC<NavbarProps> = ({
       <RealtimeClockBar />
 
       {/* Top Header */}
-      <div className="max-w-6xl mx-auto px-2.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2 sm:gap-3">
-        {/* App Branding (Logo & Nama Aplikasi) & User Identity */}
-        <div className="flex items-center gap-2 min-w-0 shrink">
-          {/* App Brand Badge / Admin Quick Edit */}
+      <div className="max-w-6xl mx-auto px-2 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2 sm:gap-3">
+        {/* Left: App Branding (Setting Logo) & Nama Admin / User Identity */}
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden">
+          {/* Setting Logo / App Brand Button */}
           <button
             id="btn-navbar-branding"
             type="button"
             onClick={() => currentUser.role === 'Admin' && setIsBrandingModalOpen(true)}
             className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-slate-800/90 border border-slate-700 flex items-center gap-1.5 sm:gap-2 shrink-0 transition ${
               currentUser.role === 'Admin'
-                ? 'hover:border-sky-500/60 hover:bg-slate-700/80 cursor-pointer'
+                ? 'hover:border-amber-500/60 hover:bg-slate-700/80 cursor-pointer shadow-xs'
                 : 'cursor-default'
             }`}
             title={
               currentUser.role === 'Admin'
-                ? `${branding.appName} - Klik untuk sesuaikan Logo & Nama Aplikasi`
+                ? `Setting Logo & Identitas Aplikasi (${branding.appName})`
                 : branding.appName
             }
           >
             <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-gradient-to-tr from-sky-500 to-teal-500 flex items-center justify-center overflow-hidden shrink-0">
               {renderNavbarLogo()}
             </div>
-            <span className="hidden sm:inline font-bold text-xs text-slate-100 tracking-tight max-w-[120px] md:max-w-[160px] truncate">
+            <span className="hidden sm:inline font-bold text-xs text-slate-100 tracking-tight max-w-[100px] md:max-w-[150px] truncate">
               {branding.appName}
             </span>
             {currentUser.role === 'Admin' && (
-              <Settings className="w-3 h-3 text-slate-400 hidden lg:inline" />
+              <Settings className="w-3 h-3 text-amber-400 shrink-0" />
             )}
           </button>
 
-          {/* User Identity & Role with Running Text Marquee */}
+          {/* Nama Admin / User Identity & Role with Running Text Marquee */}
           {onOpenProfilSiswa && currentUser.role === 'Siswa' ? (
             <button
               type="button"
               onClick={onOpenProfilSiswa}
-              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700 hover:border-sky-500/60 text-xs transition cursor-pointer flex items-center gap-1.5 sm:gap-2 group shrink min-w-0 active:scale-95"
+              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700 hover:border-sky-500/60 text-xs transition cursor-pointer flex items-center gap-1.5 sm:gap-2 group shrink min-w-0 flex-1 max-w-[170px] xs:max-w-[210px] sm:max-w-[280px] md:max-w-[340px] overflow-hidden active:scale-95"
               title="Buka Profil Saya & Rekap Presensi Siswa"
               aria-label="Profil Siswa"
             >
               <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center justify-center shrink-0">
                 <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
               </div>
-              <div className="text-left min-w-0">
+              <div className="text-left min-w-0 flex-1 overflow-hidden">
                 <UserStatusMarquee
                   name={currentUser.nama_lengkap}
                   role={currentUser.role}
@@ -264,11 +285,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </button>
           ) : (
-            <div className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs flex items-center gap-1.5 sm:gap-2 shrink min-w-0">
+            <div className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs flex items-center gap-1.5 sm:gap-2 shrink min-w-0 flex-1 max-w-[170px] xs:max-w-[210px] sm:max-w-[280px] md:max-w-[340px] overflow-hidden">
               <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md border flex items-center justify-center shrink-0 ${getRoleBadgeBg(currentUser.role)}`}>
                 {getRoleIcon(currentUser.role)}
               </div>
-              <div className="text-left min-w-0">
+              <div className="text-left min-w-0 flex-1 overflow-hidden">
                 <UserStatusMarquee
                   name={currentUser.nama_lengkap}
                   role={currentUser.role}
@@ -278,10 +299,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* User Role Badge & Actions */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+        {/* Right: Logo WiFi & Action Icons */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
 
-          {/* Internet Connection Status Indicator & Animated Sync Progress */}
+          {/* Logo WiFi & Status Koneksi Internet */}
           {!isOnline ? (
             <div
               id="indicator-internet-offline"
@@ -337,13 +358,114 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
-          {/* Status Database Firebase Firestore - Khusus Admin */}
+          {/* Menu Alat Admin Mobile (sm:hidden) agar icon tidak menumpuk & bertabrakan */}
+          {currentUser.role === 'Admin' && (
+            <div className="relative sm:hidden" ref={adminToolsRef}>
+              <button
+                id="btn-admin-tools-mobile"
+                type="button"
+                onClick={() => setIsAdminToolsOpen(!isAdminToolsOpen)}
+                className={`w-8 h-8 rounded-lg border transition-all flex items-center justify-center shrink-0 active:scale-95 cursor-pointer ${
+                  isAdminToolsOpen
+                    ? 'bg-amber-500/30 border-amber-400 text-amber-300'
+                    : 'bg-slate-800/90 border-slate-700 text-amber-400 hover:bg-slate-700'
+                }`}
+                title="Menu Alat & Integrasi Admin"
+                aria-label="Alat Admin"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-slate-900" />
+              </button>
+
+              {isAdminToolsOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 p-1.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                    Alat & Status Admin
+                  </div>
+
+                  {/* Firestore */}
+                  {onOpenDatabaseModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAdminToolsOpen(false);
+                        onOpenDatabaseModal();
+                      }}
+                      className="w-full px-2.5 py-2 rounded-lg text-left text-xs font-medium text-amber-300 hover:bg-amber-500/20 flex items-center gap-2 transition cursor-pointer"
+                    >
+                      <Database className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-100">Status Firestore</div>
+                        <div className="text-[10px] text-slate-400 truncate">Realtime Database Cloud</div>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Google Drive */}
+                  {onOpenGoogleDrive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAdminToolsOpen(false);
+                        onOpenGoogleDrive();
+                      }}
+                      className="w-full px-2.5 py-2 rounded-lg text-left text-xs font-medium text-sky-300 hover:bg-sky-500/20 flex items-center gap-2 transition cursor-pointer"
+                    >
+                      <Cloud className={`w-4 h-4 shrink-0 ${isGoogleConnected ? 'text-sky-400' : 'text-slate-400'}`} />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-100">Google Drive</div>
+                        <div className="text-[10px] text-slate-400 truncate">
+                          {isGoogleConnected ? 'Terhubung (Aktif)' : 'Belum Terhubung'}
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* WhatsApp */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAdminToolsOpen(false);
+                      onOpenWhatsAppModal();
+                    }}
+                    className="w-full px-2.5 py-2 rounded-lg text-left text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-100">WhatsApp Fonnte</div>
+                      <div className="text-[10px] text-slate-400 truncate">Integrasi Notifikasi</div>
+                    </div>
+                  </button>
+
+                  {/* Panduan */}
+                  {onOpenWalkthrough && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAdminToolsOpen(false);
+                        onOpenWalkthrough();
+                      }}
+                      className="w-full px-2.5 py-2 rounded-lg text-left text-xs font-medium text-sky-300 hover:bg-sky-500/20 flex items-center gap-2 transition cursor-pointer border-t border-slate-800"
+                    >
+                      <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-100">Panduan Sistem</div>
+                        <div className="text-[10px] text-slate-400 truncate">Walkthrough Interaktif PKL</div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Status Database Firebase Firestore - Khusus Admin (Layar Tablet & Desktop: sm:flex) */}
           {currentUser.role === 'Admin' && onOpenDatabaseModal && (
             <button
               id="btn-open-database-status"
               type="button"
               onClick={onOpenDatabaseModal}
-              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30"
+              className="hidden sm:flex h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30"
               title="Database: Firebase Firestore Realtime. Klik untuk cek sinkronisasi dokumen & status cloud."
               aria-label="Status Database Firestore"
             >
@@ -357,13 +479,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Google Drive Status & Backup trigger - Khusus Admin */}
+          {/* Google Drive Status & Backup trigger - Khusus Admin (Layar Tablet & Desktop: sm:flex) */}
           {currentUser.role === 'Admin' && onOpenGoogleDrive && (
             <button
               id="btn-open-google-drive"
               type="button"
               onClick={onOpenGoogleDrive}
-              className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 ${
+              className={`hidden sm:flex h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border transition-all items-center justify-center gap-1.5 text-xs font-medium cursor-pointer shrink-0 active:scale-95 ${
                 isGoogleConnected
                   ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 hover:bg-sky-500/30'
                   : 'bg-slate-800/90 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700'
@@ -393,12 +515,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Fonnte WhatsApp Status / Modal trigger - Khusus Admin */}
+          {/* Fonnte WhatsApp Status / Modal trigger - Khusus Admin (Layar Tablet & Desktop: sm:flex) */}
           {currentUser.role === 'Admin' && (
             <button
               id="btn-open-wa-modal"
               onClick={onOpenWhatsAppModal}
-              className="w-8 h-8 sm:w-9 sm:h-9 text-slate-300 hover:text-emerald-400 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+              className="hidden sm:flex w-8 h-8 sm:w-9 sm:h-9 text-slate-300 hover:text-emerald-400 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 rounded-lg transition-all cursor-pointer items-center justify-center shrink-0 active:scale-95"
               title="Integrasi WhatsApp Fonnte"
               aria-label="WhatsApp Fonnte"
             >
@@ -415,7 +537,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="btn-open-walkthrough"
               type="button"
               onClick={onOpenWalkthrough}
-              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border border-sky-500/30 hover:border-sky-500/50 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 transition-all flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0 active:scale-95"
+              className="hidden sm:flex h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border border-sky-500/30 hover:border-sky-500/50 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 transition-all items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0 active:scale-95"
               title="Panduan Singkat & Walkthrough Sistem PKL (Klik untuk buka panduan langkah-demi-langkah)"
               aria-label="Panduan Sistem"
             >

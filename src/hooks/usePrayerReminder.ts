@@ -13,7 +13,6 @@ import {
   getEstimatedHijriDate,
 } from '../utils/prayerTimesService';
 import {
-  playPrayerCallChime,
   playAdhanAudio,
   stopAdhanAudio,
   preloadAdhanAudio,
@@ -105,10 +104,8 @@ export function usePrayerReminder() {
       if (shouldPlayAdhan) {
         // Play instant preloaded authentic adhan audio
         playAdhanAudio(undefined, currentCfg.adhanVoice);
-      } else if (currentCfg.soundEnabled) {
-        // Fallback gentle chime if adhan is toggled OFF for this specific prayer
-        playPrayerCallChime();
       }
+      // Nada chime telah dihapus - jika adzan dimatikan, mode senyap berlaku
     }
 
     // Desktop browser notification if permitted
@@ -346,7 +343,7 @@ export function usePrayerReminder() {
   }, []);
 
   const playChime = useCallback(() => {
-    playPrayerCallChime();
+    // Nada chime telah dihapus dari fitur jadwal sholat sesuai permintaan pengguna
   }, []);
 
   const playAdhan = useCallback(() => {

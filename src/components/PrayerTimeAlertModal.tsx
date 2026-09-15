@@ -26,7 +26,7 @@ interface PrayerTimeAlertModalProps {
   isTest?: boolean;
   config: PrayerReminderConfig;
   onToggleEnabled: () => void;
-  onToggleSound: () => void;
+  onToggleSound?: () => void;
   onToggleAdhanSound?: () => void;
   onPlayChime?: () => void;
   onPlayAdhan?: () => void;
@@ -313,57 +313,6 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
                       />
                     </button>
                   )}
-                </div>
-              </div>
-
-              {/* Sound On/Off Switch & Chime replay */}
-              <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
-                <div className="flex items-center gap-2 min-w-0">
-                  {config.soundEnabled ? (
-                    <Volume2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  ) : (
-                    <VolumeX className="w-4 h-4 text-slate-500 shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-slate-200">
-                      Suara Nada Pengingat (Chime)
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      Bunyikan nada lembut cadangan saat masuk waktu
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {onPlayChime && (
-                    <button
-                      type="button"
-                      onClick={onPlayChime}
-                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium border border-slate-700 transition cursor-pointer active:scale-95"
-                      title="Tes Bunyi Nada"
-                    >
-                      Tes Nada
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    id="btn-toggle-prayer-sound-modal"
-                    onClick={onToggleSound}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      config.soundEnabled ? 'bg-emerald-600' : 'bg-slate-700'
-                    }`}
-                    role="switch"
-                    aria-checked={config.soundEnabled}
-                    title="Aktifkan atau Matikan Suara Nada Pengingat"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        config.soundEnabled ? 'translate-x-4' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
                 </div>
               </div>
             </div>

@@ -1258,9 +1258,7 @@ export default function App() {
         isTest={prayerAlertModalState?.isTest}
         config={prayerReminderConfig}
         onToggleEnabled={togglePrayerReminderEnabled}
-        onToggleSound={togglePrayerReminderSound}
         onToggleAdhanSound={togglePrayerReminderAdhanSound}
-        onPlayChime={playPrayerChime}
         onPlayAdhan={playPrayerAdhan}
         onStopAdhan={stopPrayerAdhan}
         isAdhanPlaying={isAdhanPlaying}
