@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { User, Role } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
 import { RealtimeClockBar } from './RealtimeClockBar';
@@ -43,7 +44,7 @@ interface NavbarProps {
   onTriggerSync?: () => void;
   isSyncing?: boolean;
   isDarkMode?: boolean;
-  onToggleDarkMode?: () => void;
+  onToggleDarkMode?: (e?: React.MouseEvent<HTMLElement>) => void;
   onOpenProfilSiswa?: () => void;
 }
 
@@ -307,16 +308,44 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-toggle-dark-mode"
               type="button"
-              onClick={onToggleDarkMode}
-              className="w-8 h-8 sm:w-9 sm:h-9 text-slate-300 hover:text-amber-300 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0 group active:scale-95"
+              onClick={(e) => onToggleDarkMode(e)}
+              className="relative w-8 h-8 sm:w-9 sm:h-9 text-slate-300 hover:text-amber-300 bg-slate-800/90 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 group active:scale-95 overflow-hidden shadow-2xs"
               title={isDarkMode ? 'Beralih ke Mode Terang (Light Mode)' : 'Beralih ke Mode Gelap (Dark Mode)'}
               aria-label={isDarkMode ? 'Beralih ke Mode Terang' : 'Beralih ke Mode Gelap'}
             >
-              {isDarkMode ? (
-                <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 group-hover:rotate-45 transition-transform" />
-              ) : (
-                <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300 group-hover:-rotate-12 transition-transform" />
-              )}
+              <AnimatePresence mode="wait" initial={false}>
+                {isDarkMode ? (
+                  <motion.div
+                    key="theme-sun"
+                    initial={{ rotate: -90, scale: 0.35, opacity: 0 }}
+                    animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                    exit={{ rotate: 90, scale: 0.35, opacity: 0 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 320,
+                      damping: 22,
+                    }}
+                    className="flex items-center justify-center"
+                  >
+                    <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.55)]" />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="theme-moon"
+                    initial={{ rotate: 90, scale: 0.35, opacity: 0 }}
+                    animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                    exit={{ rotate: -90, scale: 0.35, opacity: 0 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 320,
+                      damping: 22,
+                    }}
+                    className="flex items-center justify-center"
+                  >
+                    <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300 group-hover:text-amber-200 transition-colors" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </button>
           )}
 

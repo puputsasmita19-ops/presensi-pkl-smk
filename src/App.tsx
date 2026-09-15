@@ -79,7 +79,8 @@ import {
   savePresensiToIndexedDb,
   saveKunjunganToIndexedDb,
 } from './services/indexedDbService';
-import { getInitialTheme, applyTheme } from './utils/theme';
+import { flushSync } from 'react-dom';
+import { getInitialTheme, applyTheme, toggleThemeWithSmoothTransition } from './utils/theme';
 import {
   subscribeSiswa,
   subscribeDudi,
@@ -153,8 +154,13 @@ export default function App() {
     applyTheme(isDarkMode);
   }, [isDarkMode]);
 
-  const handleToggleDarkMode = () => {
-    setIsDarkMode((prev) => !prev);
+  const handleToggleDarkMode = (e?: React.MouseEvent<HTMLElement>) => {
+    const nextMode = !isDarkMode;
+    toggleThemeWithSmoothTransition(nextMode, e, () => {
+      flushSync(() => {
+        setIsDarkMode(nextMode);
+      });
+    });
   };
 
   // Internet Connectivity & Offline Sync State

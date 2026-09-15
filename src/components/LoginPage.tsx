@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { User } from '../types';
 import { INITIAL_SISWA, INITIAL_GURU } from '../data/initialData';
 import { getStoredUsers } from '../utils/userManagement';
@@ -29,7 +30,7 @@ interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
   onOpenWhatsAppHelp?: () => void;
   isDarkMode?: boolean;
-  onToggleDarkMode?: () => void;
+  onToggleDarkMode?: (e?: React.MouseEvent<HTMLElement>) => void;
   autoLogoutNotice?: string | null;
 }
 
@@ -306,21 +307,45 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         <button
           id="btn-login-toggle-theme"
           type="button"
-          onClick={onToggleDarkMode}
-          className="absolute top-4 right-4 px-3 py-2 rounded-xl bg-white/95 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-300 hover:bg-slate-50 dark:hover:bg-slate-800/90 transition cursor-pointer flex items-center gap-2 text-xs z-20 shadow-sm backdrop-blur-xs font-medium"
+          onClick={(e) => onToggleDarkMode(e)}
+          className="absolute top-4 right-4 px-3 py-2 rounded-xl bg-white/95 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-300 hover:bg-slate-50 dark:hover:bg-slate-800/90 transition-colors cursor-pointer flex items-center gap-2 text-xs z-20 shadow-sm backdrop-blur-xs font-medium active:scale-95 overflow-hidden"
           title={isDarkMode ? 'Beralih ke Mode Terang' : 'Beralih ke Mode Gelap'}
         >
-          {isDarkMode ? (
-            <>
-              <Sun className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Mode Terang</span>
-            </>
-          ) : (
-            <>
-              <Moon className="w-4 h-4 text-slate-600" />
-              <span className="hidden sm:inline">Mode Gelap</span>
-            </>
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            {isDarkMode ? (
+              <motion.div
+                key="login-sun"
+                initial={{ rotate: -70, scale: 0.4, opacity: 0 }}
+                animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                exit={{ rotate: 70, scale: 0.4, opacity: 0 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 320,
+                  damping: 22,
+                }}
+                className="flex items-center gap-1.5"
+              >
+                <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.45)]" />
+                <span className="hidden sm:inline font-semibold">Mode Terang</span>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="login-moon"
+                initial={{ rotate: 70, scale: 0.4, opacity: 0 }}
+                animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                exit={{ rotate: -70, scale: 0.4, opacity: 0 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 320,
+                  damping: 22,
+                }}
+                className="flex items-center gap-1.5"
+              >
+                <Moon className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                <span className="hidden sm:inline font-semibold">Mode Gelap</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </button>
       )}
 

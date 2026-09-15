@@ -2,12 +2,59 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+html {
+  background-color: #f8fafc;
+}
+
 html.dark {
+  background-color: #020617;
   color-scheme: dark;
 }
 
 body {
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              color 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ========================================================================= */
+/* BUTTERY-SMOOTH THEME TRANSITIONS (View Transitions API & CSS Fallback)    */
+/* ========================================================================= */
+
+/* View Transitions API Reset & Layering */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 99999;
+}
+
+/* Fallback & universal fluid property transition while theme is shifting */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+              border-color 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+              color 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              fill 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              stroke 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              box-shadow 0.45s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 /* Smooth Running Text (Marquee Ticker) */
