@@ -5,6 +5,8 @@ import { INITIAL_SISWA, INITIAL_GURU } from '../data/initialData';
 import { getStoredUsers } from '../utils/userManagement';
 import { getAndClearAutoLogoutNotice } from '../utils/sessionManager';
 import { AdminHelpModal } from './AdminHelpModal';
+import { JadwalSholatModal } from './JadwalSholatModal';
+import { usePrayerTimes } from '../utils/prayerTimesService';
 import {
   Lock,
   User as UserIcon,
@@ -24,6 +26,9 @@ import {
   Sun,
   Moon,
   X,
+  MapPin,
+  ChevronRight,
+  Sparkles,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -85,6 +90,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [roleMismatch, setRoleMismatch] = useState<RoleMismatchInfo | null>(null);
   const [isAdminHelpOpen, setIsAdminHelpOpen] = useState(false);
+  const [isPrayerModalOpen, setIsPrayerModalOpen] = useState(false);
+
+  // Realtime Prayer Times synchronized globally
+  const {
+    locationState,
+    prayerTimes,
+    countdown,
+    hijriFormatted,
+    shortLocation,
+  } = usePrayerTimes();
 
   // Real-time Clock
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -376,6 +391,68 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </div>
         </div>
 
+        {/* Realtime Waktu Sholat 5 Waktu Widget Card on Login Page */}
+        <div className="mb-3.5">
+          <button
+            id="btn-login-jadwal-sholat"
+            type="button"
+            onClick={() => setIsPrayerModalOpen(true)}
+            className="w-full text-left p-2.5 sm:p-3 rounded-2xl bg-white/95 dark:bg-slate-900/90 border border-emerald-500/30 hover:border-emerald-500/60 dark:border-emerald-500/30 dark:hover:border-emerald-400/60 shadow-md shadow-emerald-500/5 transition-all cursor-pointer group active:scale-98"
+            title={`Jadwal Sholat 5 Waktu di ${locationState.locationName}. Klik untuk detail & Arah Kiblat`}
+          >
+            {/* Top row: Next Prayer & Location */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-sm">🕌</span>
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
+                  {countdown.name}:
+                </span>
+                <span className="font-mono font-extrabold text-xs text-slate-900 dark:text-white">
+                  {countdown.time}
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium font-mono">
+                  (-{countdown.remainingFormatted})
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 shrink-0">
+                <MapPin className="w-3 h-3 text-emerald-500 shrink-0" />
+                <span className="truncate max-w-[100px] font-semibold">
+                  {shortLocation}
+                </span>
+                <ChevronRight className="w-3 h-3 text-emerald-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </div>
+            </div>
+
+            {/* 5 Main Prayer Times Mini Badges Strip */}
+            <div className="grid grid-cols-5 gap-1 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+              {[
+                { name: 'Subuh', time: prayerTimes.subuh, isNext: countdown.name === 'Subuh' },
+                { name: 'Dzuhur', time: prayerTimes.dzuhur, isNext: countdown.name === 'Dzuhur' },
+                { name: 'Ashar', time: prayerTimes.ashar, isNext: countdown.name === 'Ashar' },
+                { name: 'Maghrib', time: prayerTimes.maghrib, isNext: countdown.name === 'Maghrib' },
+                { name: 'Isya', time: prayerTimes.isya, isNext: countdown.name === 'Isya' },
+              ].map((p) => (
+                <div
+                  key={p.name}
+                  className={`px-1 py-1 rounded-lg text-center transition-all ${
+                    p.isNext
+                      ? 'bg-emerald-500 text-white shadow-xs font-bold'
+                      : 'bg-slate-50 dark:bg-slate-950/60 text-slate-600 dark:text-slate-300 group-hover:bg-emerald-50 dark:group-hover:bg-slate-800/80'
+                  }`}
+                >
+                  <div className={`text-[9px] uppercase tracking-wider ${p.isNext ? 'text-white' : 'text-slate-400 dark:text-slate-400'}`}>
+                    {p.name}
+                  </div>
+                  <div className="font-mono text-[10px] sm:text-[11px] font-extrabold leading-tight">
+                    {p.time}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </button>
+        </div>
+
         {/* Minimalist Login Card */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/80 rounded-2xl shadow-xl shadow-slate-200/70 dark:shadow-2xl dark:shadow-black/60 p-5 sm:p-6 transition-colors duration-200">
           
@@ -615,6 +692,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       <AdminHelpModal
         isOpen={isAdminHelpOpen}
         onClose={() => setIsAdminHelpOpen(false)}
+      />
+
+      {/* Jadwal Sholat 5 Waktu & Arah Kiblat Modal */}
+      <JadwalSholatModal
+        isOpen={isPrayerModalOpen}
+        onClose={() => setIsPrayerModalOpen(false)}
       />
     </div>
   );
