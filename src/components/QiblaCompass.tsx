@@ -118,66 +118,73 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
   };
 
   const startOrientationListener = useCallback(() => {
-    let sensorFired = false;
-
     // Handler for orientation events
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      sensorFired = true;
-      setIsSensorActive(true);
-
       // Check tilt: device should be held relatively flat for accurate compass reading
       const beta = event.beta ?? 0;
       const gamma = event.gamma ?? 0;
-      const isExcessiveTilt = Math.abs(beta) > 35 || Math.abs(gamma) > 35;
+      const isExcessiveTilt = Math.abs(beta) > 40 || Math.abs(gamma) > 40;
       setTiltWarning(isExcessiveTilt);
 
       let heading: number | null = null;
 
       // 1. iOS Safari webkitCompassHeading (0 to 360 clockwise from magnetic North)
-      if (typeof (event as unknown as { webkitCompassHeading?: number }).webkitCompassHeading !== 'undefined') {
-        const iosHeading = (event as unknown as { webkitCompassHeading: number }).webkitCompassHeading;
-        if (iosHeading !== null && !isNaN(iosHeading)) {
+      const eventAny = event as unknown as { webkitCompassHeading?: number };
+      if (typeof eventAny.webkitCompassHeading !== 'undefined' && eventAny.webkitCompassHeading !== null) {
+        const iosHeading = Number(eventAny.webkitCompassHeading);
+        if (!isNaN(iosHeading)) {
           heading = iosHeading;
           setSensorType('webkit');
         }
       }
 
-      // 2. Android absolute orientation or standard alpha
-      if (heading === null && event.alpha !== null && !isNaN(event.alpha)) {
-        // Standard W3C alpha is counter-clockwise, convert to clockwise heading
-        heading = (360 - event.alpha) % 360;
-        setSensorType('gyro');
+      // 2. Android deviceorientationabsolute or standard orientation alpha
+      if (heading === null && event.alpha !== null && typeof event.alpha !== 'undefined') {
+        const alpha = Number(event.alpha);
+        if (!isNaN(alpha)) {
+          // Screen orientation offset (portrait = 0, landscape = 90 / 270)
+          let screenAngle = 0;
+          if (typeof window !== 'undefined' && window.screen?.orientation?.angle !== undefined) {
+            screenAngle = window.screen.orientation.angle;
+          } else if (typeof window !== 'undefined' && typeof (window as unknown as { orientation?: number }).orientation === 'number') {
+            screenAngle = (window as unknown as { orientation: number }).orientation;
+          }
+
+          // In standard W3C, alpha is counter-clockwise (0..360)
+          // True compass heading = (360 - alpha + screenAngle) % 360
+          heading = (360 - alpha + screenAngle + 360) % 360;
+          setSensorType('gyro');
+        }
       }
 
-      if (heading !== null) {
+      if (heading !== null && !isNaN(heading)) {
+        setIsSensorActive(true);
+        setNeedsPermission(false);
+        setPermissionError(null);
         setDeviceHeading(Math.round(heading * 10) / 10);
       }
     };
 
-    // Prefer deviceorientationabsolute if available (standard Android Chrome)
-    const win = window as unknown as Record<string, unknown>;
-    const hasAbsolute = typeof win !== 'undefined' && 'ondeviceorientationabsolute' in win;
-
-    if (hasAbsolute) {
+    // Listen to BOTH deviceorientationabsolute and deviceorientation
+    // to ensure maximum compatibility across Samsung, Xiaomi, Pixel, Oppo, iPhone
+    try {
       window.addEventListener('deviceorientationabsolute' as unknown as keyof WindowEventMap, handleOrientation as EventListener, true);
-    } else {
+    } catch {
+      // ignore
+    }
+    try {
       window.addEventListener('deviceorientation', handleOrientation, true);
+    } catch {
+      // ignore
     }
 
-    // Check after 1.5 seconds if any event actually fired
-    const timer = setTimeout(() => {
-      if (!sensorFired) {
-        setIsSensorActive(false);
-        setSensorType('manual');
-      }
-    }, 1500);
-
     return () => {
-      clearTimeout(timer);
-      if (hasAbsolute) {
+      try {
         window.removeEventListener('deviceorientationabsolute' as unknown as keyof WindowEventMap, handleOrientation as EventListener, true);
-      }
-      window.removeEventListener('deviceorientation', handleOrientation, true);
+      } catch {}
+      try {
+        window.removeEventListener('deviceorientation', handleOrientation, true);
+      } catch {}
     };
   }, []);
 
@@ -316,29 +323,39 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
             {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
           </button>
 
-          {/* Sensor Status Pill */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700/80 text-[11px]">
+          {/* Sensor Status Pill & Re-calibrate button */}
+          <button
+            type="button"
+            onClick={requestOrientationPermission}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition cursor-pointer active:scale-95 ${
+              isSensorActive
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/50'
+            }`}
+            title="Klik untuk menyinkronkan ulang atau mengaktifkan sensor gyroscope HP"
+          >
             <span
               className={`w-2 h-2 rounded-full ${
                 isAligned
                   ? 'bg-emerald-400 animate-ping'
                   : isSensorActive
-                  ? 'bg-emerald-400'
+                  ? 'bg-emerald-400 animate-pulse'
                   : isSimulating
                   ? 'bg-amber-400 animate-pulse'
                   : 'bg-sky-400'
               }`}
             />
-            <span className="text-slate-300 font-medium">
+            <span>
               {isSensorActive
                 ? sensorType === 'webkit'
                   ? 'iOS Gyro (Aktif)'
-                  : 'Gyroscope (Aktif)'
+                  : 'Gyroscope HP (Aktif)'
                 : isSimulating
                 ? 'Simulasi Putar'
-                : 'Mode Kompas Layar'}
+                : 'Aktifkan Sensor HP'}
             </span>
-          </div>
+            <RefreshCw className="w-2.5 h-2.5 text-slate-400" />
+          </button>
         </div>
       </div>
 

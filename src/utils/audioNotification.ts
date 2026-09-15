@@ -130,3 +130,193 @@ export function playPrayerCallChime(): void {
     console.warn('Prayer call audio chime playback omitted:', err);
   }
 }
+
+// Active Adhan Audio Tracking & Management
+interface ActiveAdhanState {
+  isPlaying: boolean;
+  stopHandle?: () => void;
+  timerId?: ReturnType<typeof setTimeout>;
+}
+
+const adhanState: ActiveAdhanState = {
+  isPlaying: false,
+};
+
+const adhanListeners: Array<(isPlaying: boolean) => void> = [];
+
+export function isAdhanPlaying(): boolean {
+  return adhanState.isPlaying;
+}
+
+export function addAdhanListener(callback: (isPlaying: boolean) => void): () => void {
+  adhanListeners.push(callback);
+  return () => {
+    const idx = adhanListeners.indexOf(callback);
+    if (idx !== -1) adhanListeners.splice(idx, 1);
+  };
+}
+
+function notifyAdhanListeners(isPlaying: boolean): void {
+  adhanState.isPlaying = isPlaying;
+  adhanListeners.forEach((cb) => {
+    try {
+      cb(isPlaying);
+    } catch {}
+  });
+}
+
+/**
+ * Stop any ongoing Adhan playback immediately
+ */
+export function stopAdhanAudio(): void {
+  if (adhanState.stopHandle) {
+    adhanState.stopHandle();
+    adhanState.stopHandle = undefined;
+  }
+  if (adhanState.timerId) {
+    clearTimeout(adhanState.timerId);
+    adhanState.timerId = undefined;
+  }
+  notifyAdhanListeners(false);
+}
+
+/**
+ * Play authentic, resonant Adhan call using Web Audio API synthesis
+ * Melodic structure follows Maqam Bayati (Allahu Akbar, Allahu Akbar...)
+ * Complete with harmonic formant filtering, subtle vocal vibrato, and reverberant decay.
+ * Can be stopped anytime via stopAdhanAudio() or returning cleanup function.
+ */
+export function playAdhanAudio(onEnded?: () => void): () => void {
+  // Stop existing playback first if running
+  stopAdhanAudio();
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return () => {};
+
+    const activeNodes: Array<{ stop?: () => void; disconnect: () => void }> = [];
+    const now = ctx.currentTime + 0.05;
+
+    // Master bus for Adhan
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.85, now);
+    masterGain.connect(ctx.destination);
+    activeNodes.push(masterGain);
+
+    // Warm resonant bandpass filter simulating acoustic mosque hall formant
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(860, now);
+    filter.Q.setValueAtTime(1.8, now);
+    filter.connect(masterGain);
+
+    // Vibrato LFO (4.8 Hz gentle pitch modulation characteristic of adhan vocalization)
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.frequency.setValueAtTime(4.8, now);
+    lfoGain.gain.setValueAtTime(3.5, now); // ~3.5 Hz pitch modulation depth
+    lfo.connect(lfoGain);
+    lfo.start(now);
+    activeNodes.push(lfo);
+
+    // Melodic notes sequence in Maqam Bayati (Takbir 1, Takbir 2, & Shahadah phrases)
+    // D4 = 293.66, Eb4 = 311.13, F4 = 349.23, G4 = 392.00, A4 = 440.00, Bb4 = 466.16, C5 = 523.25, D5 = 587.33
+    const adhanNotes = [
+      // Phrase 1: "Allaaahu Akbar..."
+      { f: 293.66, t: 0.0, d: 0.8 },   // Al-
+      { f: 392.00, t: 0.7, d: 1.5 },   // laa-
+      { f: 440.00, t: 2.1, d: 0.7 },   // hu
+      { f: 392.00, t: 2.7, d: 0.9 },   // Ak-
+      { f: 349.23, t: 3.5, d: 2.2 },   // bar...
+
+      // Phrase 2: "Allaaahu Akbar..."
+      { f: 349.23, t: 6.0, d: 0.8 },   // Al-
+      { f: 440.00, t: 6.7, d: 1.6 },   // laa-
+      { f: 466.16, t: 8.2, d: 0.9 },   // hu
+      { f: 440.00, t: 9.0, d: 0.8 },   // Ak-
+      { f: 392.00, t: 9.7, d: 2.5 },   // bar...
+
+      // Phrase 3: "Ash-hadu allaa ilaaha illallaah..."
+      { f: 293.66, t: 12.5, d: 0.7 },  // Ash-
+      { f: 349.23, t: 13.1, d: 1.0 },  // hadu
+      { f: 392.00, t: 14.0, d: 0.9 },  // al-
+      { f: 440.00, t: 14.8, d: 1.8 },  // laa
+      { f: 392.00, t: 16.5, d: 0.8 },  // i-
+      { f: 349.23, t: 17.2, d: 1.2 },  // laaha
+      { f: 392.00, t: 18.3, d: 1.4 },  // il-lal-
+      { f: 293.66, t: 19.6, d: 3.2 },  // laah...
+    ];
+
+    const totalDuration = 23.5; // ~23 seconds rich melodic Azan preview
+
+    adhanNotes.forEach(({ f, t, d }) => {
+      const noteStart = now + t;
+      const noteEnd = noteStart + d;
+
+      // Primary warm vocal oscillator (sine)
+      const oscPrimary = ctx.createOscillator();
+      oscPrimary.type = 'sine';
+      oscPrimary.frequency.setValueAtTime(f, noteStart);
+      lfoGain.connect(oscPrimary.frequency);
+
+      // Secondary overtone oscillator (triangle for subtle harmonic body)
+      const oscOvertone = ctx.createOscillator();
+      oscOvertone.type = 'triangle';
+      oscOvertone.frequency.setValueAtTime(f * 2, noteStart);
+
+      // Note envelope gain
+      const noteGain = ctx.createGain();
+      noteGain.gain.setValueAtTime(0.001, noteStart);
+      noteGain.gain.linearRampToValueAtTime(0.32, noteStart + 0.12);
+      noteGain.gain.exponentialRampToValueAtTime(0.001, noteEnd + 0.35);
+
+      const overtoneGain = ctx.createGain();
+      overtoneGain.gain.setValueAtTime(0.001, noteStart);
+      overtoneGain.gain.linearRampToValueAtTime(0.08, noteStart + 0.15);
+      overtoneGain.gain.exponentialRampToValueAtTime(0.001, noteEnd + 0.25);
+
+      oscPrimary.connect(noteGain);
+      oscOvertone.connect(overtoneGain);
+      noteGain.connect(filter);
+      overtoneGain.connect(filter);
+
+      oscPrimary.start(noteStart);
+      oscPrimary.stop(noteEnd + 0.4);
+      oscOvertone.start(noteStart);
+      oscOvertone.stop(noteEnd + 0.4);
+
+      activeNodes.push(oscPrimary, oscOvertone, noteGain, overtoneGain);
+    });
+
+    notifyAdhanListeners(true);
+
+    const cleanup = () => {
+      try {
+        masterGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
+        setTimeout(() => {
+          activeNodes.forEach((node) => {
+            try {
+              if (typeof node.stop === 'function') node.stop();
+              node.disconnect();
+            } catch {}
+          });
+        }, 180);
+      } catch {}
+      notifyAdhanListeners(false);
+      if (onEnded) onEnded();
+    };
+
+    adhanState.stopHandle = cleanup;
+    adhanState.timerId = setTimeout(() => {
+      stopAdhanAudio();
+      if (onEnded) onEnded();
+    }, totalDuration * 1000);
+
+    return cleanup;
+  } catch (err) {
+    console.warn('Adhan audio synthesis failed:', err);
+    notifyAdhanListeners(false);
+    return () => {};
+  }
+}
+

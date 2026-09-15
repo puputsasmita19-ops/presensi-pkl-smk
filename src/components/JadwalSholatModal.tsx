@@ -35,6 +35,13 @@ import {
 } from '../utils/prayerTimesService';
 import { QiblaCompass } from './QiblaCompass';
 
+import {
+  playAdhanAudio,
+  stopAdhanAudio,
+  isAdhanPlaying,
+  addAdhanListener,
+} from '../utils/audioNotification';
+
 interface JadwalSholatModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -57,6 +64,13 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
   } = usePrayerTimes();
 
   const [activeTab, setActiveTab] = useState<'schedule' | 'qibla'>(initialTab);
+  const [isPlayingAdhan, setIsPlayingAdhan] = useState<boolean>(() => isAdhanPlaying());
+
+  useEffect(() => {
+    return addAdhanListener((playing) => {
+      setIsPlayingAdhan(playing);
+    });
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -97,6 +111,19 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
   const handleToggleSound = () => {
     const updated = savePrayerReminderConfig({ soundEnabled: !reminderConfig.soundEnabled });
     setReminderConfig(updated);
+  };
+
+  const handleToggleAdhanSound = () => {
+    const updated = savePrayerReminderConfig({ adhanSoundEnabled: !reminderConfig.adhanSoundEnabled });
+    setReminderConfig(updated);
+  };
+
+  const handleToggleTestAdhan = () => {
+    if (isPlayingAdhan) {
+      stopAdhanAudio();
+    } else {
+      playAdhanAudio();
+    }
   };
 
   const handleTestReminder = () => {
@@ -524,10 +551,10 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
               </div>
 
               {/* Toggles Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
                 {/* Master Pop-up Toggle */}
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
                     {reminderConfig.enabled ? (
                       <Bell className="w-4 h-4 text-emerald-400 shrink-0" />
                     ) : (
@@ -538,7 +565,7 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                         Pop-up Pengingat
                       </div>
                       <div className="text-[10px] text-slate-400 truncate">
-                        {reminderConfig.enabled ? 'Aktif di semua halaman' : 'Dimatikan'}
+                        {reminderConfig.enabled ? 'Aktif di semua layar' : 'Dimatikan'}
                       </div>
                     </div>
                   </div>
@@ -547,7 +574,7 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                     type="button"
                     id="btn-toggle-reminder-master"
                     onClick={handleToggleReminder}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                       reminderConfig.enabled ? 'bg-emerald-600' : 'bg-slate-700'
                     }`}
                     role="switch"
@@ -556,16 +583,55 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                   >
                     <span
                       aria-hidden="true"
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        reminderConfig.enabled ? 'translate-x-5' : 'translate-x-0'
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        reminderConfig.enabled ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Adzan Sound On/Off Toggle */}
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="text-sm shrink-0">🕌</div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-white flex items-center gap-1">
+                        <span>Suara Adzan</span>
+                        <span className={`text-[8.5px] px-1 py-0.2 rounded-xs font-bold ${
+                          reminderConfig.adhanSoundEnabled ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {reminderConfig.adhanSoundEnabled ? 'ON' : 'OFF'}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {reminderConfig.adhanSoundEnabled ? 'Kumandang adzan aktif' : 'Adzan dimatikan'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="btn-toggle-reminder-adhan"
+                    onClick={handleToggleAdhanSound}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      reminderConfig.adhanSoundEnabled ? 'bg-emerald-600' : 'bg-slate-700'
+                    }`}
+                    role="switch"
+                    aria-checked={reminderConfig.adhanSoundEnabled}
+                    title="Aktifkan atau Matikan Kumandang Suara Adzan"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        reminderConfig.adhanSoundEnabled ? 'translate-x-4' : 'translate-x-0'
                       }`}
                     />
                   </button>
                 </div>
 
                 {/* Sound Chime Toggle */}
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
                     {reminderConfig.soundEnabled ? (
                       <Volume2 className="w-4 h-4 text-emerald-400 shrink-0" />
                     ) : (
@@ -573,10 +639,10 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                     )}
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-white">
-                        Suara Nada Melodi
+                        Nada Chime
                       </div>
                       <div className="text-[10px] text-slate-400 truncate">
-                        {reminderConfig.soundEnabled ? 'Melodi sholat aktif' : 'Mode senyap'}
+                        {reminderConfig.soundEnabled ? 'Melodi lembut' : 'Mode senyap'}
                       </div>
                     </div>
                   </div>
@@ -585,7 +651,7 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                     type="button"
                     id="btn-toggle-reminder-sound"
                     onClick={handleToggleSound}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                       reminderConfig.soundEnabled ? 'bg-emerald-600' : 'bg-slate-700'
                     }`}
                     role="switch"
@@ -594,8 +660,8 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                   >
                     <span
                       aria-hidden="true"
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        reminderConfig.soundEnabled ? 'translate-x-5' : 'translate-x-0'
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        reminderConfig.soundEnabled ? 'translate-x-4' : 'translate-x-0'
                       }`}
                     />
                   </button>
@@ -605,19 +671,36 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
               {/* Test Button Row */}
               <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
                 <p className="text-[11px] text-slate-400">
-                  Uji coba bagaimana tampilan pop-up dan suara pengingat saat waktu tiba:
+                  Uji coba bagaimana tampilan pop-up dan suara adzan saat waktu sholat tiba:
                 </p>
 
-                <button
-                  type="button"
-                  id="btn-uji-coba-pengingat-sholat"
-                  onClick={handleTestReminder}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-700/80 hover:bg-emerald-600 text-white text-xs font-semibold border border-emerald-500/40 transition cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95 ml-auto"
-                  title="Klik untuk membuka simulasi pop-up pengingat sholat sekarang"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Uji Coba Pengingat (Test Pop-up)</span>
-                </button>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    id="btn-uji-coba-suara-adzan"
+                    onClick={handleToggleTestAdhan}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95 ${
+                      isPlayingAdhan
+                        ? 'bg-rose-900/70 hover:bg-rose-800 text-rose-200 border-rose-500/50'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                    }`}
+                    title="Uji coba dengarkan lantunan suara adzan"
+                  >
+                    <Volume2 className={`w-3.5 h-3.5 ${isPlayingAdhan ? 'text-rose-400 animate-bounce' : 'text-emerald-400'}`} />
+                    <span>{isPlayingAdhan ? 'Hentikan Adzan' : 'Uji Suara Adzan'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="btn-uji-coba-pengingat-sholat"
+                    onClick={handleTestReminder}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-700/80 hover:bg-emerald-600 text-white text-xs font-semibold border border-emerald-500/40 transition cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95"
+                    title="Klik untuk membuka simulasi pop-up pengingat sholat sekarang"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Simulasi Pop-up</span>
+                  </button>
+                </div>
               </div>
             </div>
 

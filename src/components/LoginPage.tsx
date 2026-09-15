@@ -513,68 +513,60 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </div>
         </div>
 
-        {/* Realtime Waktu Sholat 5 Waktu Widget Card on Login Page */}
-        <div className="mb-3.5">
+        {/* Realtime Waktu Sholat 5 Waktu Widget Card on Login Page (Tampilan Ringkas & Rapi) */}
+        <div className="mb-2.5">
           <div
             id="login-jadwal-sholat-card"
-            className="w-full text-left p-2.5 sm:p-3 rounded-2xl bg-white/95 dark:bg-slate-900/90 border border-emerald-500/30 hover:border-emerald-500/60 dark:border-emerald-500/30 dark:hover:border-emerald-400/60 shadow-md shadow-emerald-500/5 transition-all group"
+            className="w-full text-left p-2 rounded-xl bg-white/95 dark:bg-slate-900/90 border border-emerald-500/25 hover:border-emerald-500/50 dark:border-emerald-500/25 dark:hover:border-emerald-400/50 shadow-xs transition-all group cursor-pointer"
+            onClick={() => {
+              setPrayerModalTab('schedule');
+              setIsPrayerModalOpen(true);
+            }}
+            title={`Jadwal Sholat 5 Waktu di ${locationState.locationName}. Klik untuk detail`}
           >
             {/* Top row: Next Prayer & Location */}
-            <div
-              className="flex items-center justify-between gap-2 mb-2 cursor-pointer"
-              onClick={() => {
-                setPrayerModalTab('schedule');
-                setIsPrayerModalOpen(true);
-              }}
-              title={`Jadwal Sholat 5 Waktu di ${locationState.locationName}. Klik untuk detail`}
-            >
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-sm">🕌</span>
-                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
+            <div className="flex items-center justify-between gap-1.5 mb-1.5">
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="text-xs">🕌</span>
+                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
                   {countdown.name}:
                 </span>
-                <span className="font-mono font-extrabold text-xs text-slate-900 dark:text-white">
+                <span className="font-mono font-extrabold text-[11px] text-slate-900 dark:text-white">
                   {countdown.time}
                 </span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium font-mono">
+                <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium font-mono">
                   (-{countdown.remainingFormatted})
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 shrink-0">
-                <MapPin className="w-3 h-3 text-emerald-500 shrink-0" />
-                <span className="truncate max-w-[100px] font-semibold">
+              <div className="flex items-center gap-1 text-[9.5px] text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 shrink-0">
+                <MapPin className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                <span className="truncate max-w-[85px] font-medium">
                   {shortLocation}
                 </span>
                 {isReminderEnabled ? (
                   <span
-                    className="inline-flex items-center gap-0.5 text-[9px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-1 py-0.2 rounded border border-emerald-500/30"
-                    title="Pengingat Sholat: Aktif"
+                    className="inline-flex items-center gap-0.5 text-[8.5px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-1 py-0.2 rounded border border-emerald-500/30"
+                    title="Pengingat Sholat & Adzan: Aktif"
                   >
-                    <Bell className="w-2.5 h-2.5" />
+                    <Bell className="w-2 h-2" />
                     <span>Aktif</span>
                   </span>
                 ) : (
                   <span
-                    className="inline-flex items-center gap-0.5 text-[9px] text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded border border-slate-300 dark:border-slate-700"
+                    className="inline-flex items-center gap-0.5 text-[8.5px] text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded border border-slate-300 dark:border-slate-700"
                     title="Pengingat Sholat: Nonaktif"
                   >
-                    <BellOff className="w-2.5 h-2.5" />
+                    <BellOff className="w-2 h-2" />
                     <span>Mute</span>
                   </span>
                 )}
-                <ChevronRight className="w-3 h-3 text-emerald-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                <ChevronRight className="w-2.5 h-2.5 text-emerald-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
               </div>
             </div>
 
-            {/* 5 Main Prayer Times Mini Badges Strip */}
-            <div
-              className="grid grid-cols-5 gap-1 pt-1.5 border-t border-slate-100 dark:border-slate-800 cursor-pointer"
-              onClick={() => {
-                setPrayerModalTab('schedule');
-                setIsPrayerModalOpen(true);
-              }}
-            >
+            {/* 5 Main Prayer Times Mini Badges Strip - Compact */}
+            <div className="grid grid-cols-5 gap-1 pt-1 border-t border-slate-100 dark:border-slate-800/80">
               {[
                 { name: 'Subuh', time: prayerTimes.subuh, isNext: countdown.name === 'Subuh' },
                 { name: 'Dzuhur', time: prayerTimes.dzuhur, isNext: countdown.name === 'Dzuhur' },
@@ -584,29 +576,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               ].map((p) => (
                 <div
                   key={p.name}
-                  className={`px-1 py-1 rounded-lg text-center transition-all ${
+                  className={`px-0.5 py-0.5 rounded-md text-center transition-all ${
                     p.isNext
-                      ? 'bg-emerald-500 text-white shadow-xs font-bold'
-                      : 'bg-slate-50 dark:bg-slate-950/60 text-slate-600 dark:text-slate-300 group-hover:bg-emerald-50 dark:group-hover:bg-slate-800/80'
+                      ? 'bg-emerald-500 text-white shadow-2xs font-bold'
+                      : 'bg-slate-50 dark:bg-slate-950/50 text-slate-600 dark:text-slate-300 group-hover:bg-emerald-50 dark:group-hover:bg-slate-800/70'
                   }`}
                 >
-                  <div className={`text-[9px] uppercase tracking-wider ${p.isNext ? 'text-white' : 'text-slate-400 dark:text-slate-400'}`}>
+                  <div className={`text-[8px] uppercase tracking-wider ${p.isNext ? 'text-white' : 'text-slate-400 dark:text-slate-400'}`}>
                     {p.name}
                   </div>
-                  <div className="font-mono text-[10px] sm:text-[11px] font-extrabold leading-tight">
+                  <div className="font-mono text-[9.5px] sm:text-[10px] font-bold leading-tight">
                     {p.time}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Direct Qibla Compass Trigger Row */}
-            <div className="flex items-center justify-between pt-2 mt-1.5 border-t border-slate-100 dark:border-slate-800 text-[11px]">
-              <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-                <Compass className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            {/* Direct Qibla Compass Trigger Row - Compact */}
+            <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-800/80 text-[10px]">
+              <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+                <Compass className="w-3 h-3 text-emerald-500 shrink-0" />
                 <span>Kiblat:</span>
                 <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{qiblaAngle}°</span>
-                <span className="text-[10px] text-slate-400">(Barat Laut)</span>
+                <span className="text-[9px] text-slate-400">(Barat Laut)</span>
               </div>
 
               <button
@@ -617,11 +609,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   setPrayerModalTab('qibla');
                   setIsPrayerModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1 font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition cursor-pointer text-[10.5px] group/qibla"
+                className="inline-flex items-center gap-0.5 font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition cursor-pointer text-[9.5px] group/qibla"
                 title="Buka Kompas Arah Kiblat interaktif dengan Gyroscope HP"
               >
-                <span>Kompas Gyroscope</span>
-                <ChevronRight className="w-3 h-3 group-hover/qibla:translate-x-0.5 transition-transform" />
+                <span>Kompas HP</span>
+                <ChevronRight className="w-2.5 h-2.5 group-hover/qibla:translate-x-0.5 transition-transform" />
               </button>
             </div>
           </div>

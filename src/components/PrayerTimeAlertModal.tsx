@@ -27,7 +27,11 @@ interface PrayerTimeAlertModalProps {
   config: PrayerReminderConfig;
   onToggleEnabled: () => void;
   onToggleSound: () => void;
+  onToggleAdhanSound?: () => void;
   onPlayChime?: () => void;
+  onPlayAdhan?: () => void;
+  onStopAdhan?: () => void;
+  isAdhanPlaying?: boolean;
   onOpenFullSchedule?: () => void;
   qiblaAngle?: number;
 }
@@ -43,7 +47,11 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
   config,
   onToggleEnabled,
   onToggleSound,
+  onToggleAdhanSound,
   onPlayChime,
+  onPlayAdhan,
+  onStopAdhan,
+  isAdhanPlaying = false,
   onOpenFullSchedule,
   qiblaAngle = 294,
 }) => {
@@ -157,9 +165,40 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
             </div>
 
             {/* ON / OFF FEATURE TOGGLE BAR */}
+            {/* Live Adhan Playing Banner */}
+            {isAdhanPlaying && (
+              <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border border-emerald-400/60 shadow-lg flex items-center justify-between gap-2 animate-pulse">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0 border border-emerald-400/40">
+                    <Volume2 className="w-4 h-4 animate-bounce text-emerald-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span>Suara Adzan Berkumandang</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    </div>
+                    <div className="text-[10px] text-emerald-300 truncate">
+                      Panggilan sholat sedang diputar
+                    </div>
+                  </div>
+                </div>
+
+                {onStopAdhan && (
+                  <button
+                    type="button"
+                    onClick={onStopAdhan}
+                    className="px-2.5 py-1 rounded-lg bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-500/40 text-[10px] font-bold transition cursor-pointer active:scale-95 shrink-0"
+                    title="Hentikan Kumandang Adzan"
+                  >
+                    Hentikan Adzan
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/20 space-y-2.5">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                <span>Pengaturan Pengingat Sholat</span>
+                <span>Pengaturan Pengingat & Suara Adzan</span>
                 <span className={`text-[10px] font-bold px-2 py-0.2 rounded-full ${
                   config.enabled
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
@@ -208,6 +247,75 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
                 </button>
               </div>
 
+              {/* Adzan Sound On/Off Switch */}
+              <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
+                    config.adhanSoundEnabled ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-500'
+                  }`}>
+                    🕌
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                      <span>Suara Adzan Masuk Waktu</span>
+                      <span className={`text-[9px] px-1.5 py-0.2 rounded-sm font-bold ${
+                        config.adhanSoundEnabled ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {config.adhanSoundEnabled ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Kumandangkan suara adzan saat waktu sholat tiba
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {isAdhanPlaying ? (
+                    <button
+                      type="button"
+                      onClick={onStopAdhan}
+                      className="px-2 py-0.5 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-200 text-[10px] font-medium border border-rose-500/40 transition cursor-pointer active:scale-95"
+                      title="Hentikan Adzan"
+                    >
+                      Hentikan
+                    </button>
+                  ) : (
+                    onPlayAdhan && (
+                      <button
+                        type="button"
+                        onClick={onPlayAdhan}
+                        className="px-2 py-0.5 rounded bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 text-[10px] font-medium border border-emerald-500/40 transition cursor-pointer active:scale-95"
+                        title="Uji Putar Suara Adzan"
+                      >
+                        Tes Adzan
+                      </button>
+                    )
+                  )}
+
+                  {onToggleAdhanSound && (
+                    <button
+                      type="button"
+                      id="btn-toggle-prayer-adhan-sound"
+                      onClick={onToggleAdhanSound}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        config.adhanSoundEnabled ? 'bg-emerald-600' : 'bg-slate-700'
+                      }`}
+                      role="switch"
+                      aria-checked={config.adhanSoundEnabled}
+                      title="Aktifkan atau Matikan Suara Adzan Otomatis"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          config.adhanSoundEnabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Sound On/Off Switch & Chime replay */}
               <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
                 <div className="flex items-center gap-2 min-w-0">
@@ -221,7 +329,7 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
                       Suara Nada Pengingat (Chime)
                     </div>
                     <div className="text-[10px] text-slate-400">
-                      Bunyikan melodi lembut saat masuk waktu
+                      Bunyikan nada lembut cadangan saat masuk waktu
                     </div>
                   </div>
                 </div>

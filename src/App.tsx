@@ -341,9 +341,13 @@ export default function App() {
     config: prayerReminderConfig,
     toggleEnabled: togglePrayerReminderEnabled,
     toggleSound: togglePrayerReminderSound,
+    toggleAdhanSound: togglePrayerReminderAdhanSound,
     alertModalState: prayerAlertModalState,
     closeAlertModal: closePrayerAlertModal,
     playChime: playPrayerChime,
+    playAdhan: playPrayerAdhan,
+    stopAdhan: stopPrayerAdhan,
+    isAdhanPlaying,
   } = usePrayerReminder();
 
   const [isGlobalPrayerScheduleOpen, setIsGlobalPrayerScheduleOpen] = useState<boolean>(false);
@@ -1255,7 +1259,11 @@ export default function App() {
         config={prayerReminderConfig}
         onToggleEnabled={togglePrayerReminderEnabled}
         onToggleSound={togglePrayerReminderSound}
+        onToggleAdhanSound={togglePrayerReminderAdhanSound}
         onPlayChime={playPrayerChime}
+        onPlayAdhan={playPrayerAdhan}
+        onStopAdhan={stopPrayerAdhan}
+        isAdhanPlaying={isAdhanPlaying}
         onOpenFullSchedule={() => setIsGlobalPrayerScheduleOpen(true)}
       />
       <JadwalSholatModal

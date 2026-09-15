@@ -12,7 +12,13 @@ import {
   getSavedPrayerLocation,
   getEstimatedHijriDate,
 } from '../utils/prayerTimesService';
-import { playPrayerCallChime } from '../utils/audioNotification';
+import {
+  playPrayerCallChime,
+  playAdhanAudio,
+  stopAdhanAudio,
+  isAdhanPlaying,
+  addAdhanListener,
+} from '../utils/audioNotification';
 
 export interface AlertModalState {
   isOpen: boolean;
@@ -26,6 +32,14 @@ export interface AlertModalState {
 export function usePrayerReminder() {
   const [config, setConfig] = useState<PrayerReminderConfig>(() => getSavedPrayerReminderConfig());
   const [alertModalState, setAlertModalState] = useState<AlertModalState | null>(null);
+  const [adhanActive, setAdhanActive] = useState<boolean>(() => isAdhanPlaying());
+
+  // Subscribe to adhan state changes
+  useEffect(() => {
+    return addAdhanListener((playing) => {
+      setAdhanActive(playing);
+    });
+  }, []);
 
   // Sync config state when changed from anywhere (e.g., another component or modal)
   useEffect(() => {
@@ -62,10 +76,14 @@ export function usePrayerReminder() {
       const loc = getSavedPrayerLocation();
       const hijri = getEstimatedHijriDate(new Date());
 
-      // If sound is enabled in config, play chime
+      // If adhan sound is enabled in config, play adhan; otherwise if sound is enabled play chime
       const currentCfg = getSavedPrayerReminderConfig();
-      if (currentCfg.soundEnabled) {
-        playPrayerCallChime();
+      if (currentCfg.enabled) {
+        if (currentCfg.adhanSoundEnabled) {
+          playAdhanAudio();
+        } else if (currentCfg.soundEnabled) {
+          playPrayerCallChime();
+        }
       }
 
       setAlertModalState({
@@ -132,8 +150,10 @@ export function usePrayerReminder() {
               localStorage.setItem(STORAGE_PRAYER_LAST_ALERT, alertKey);
             } catch {}
 
-            // Play Chime if enabled
-            if (currentCfg.soundEnabled) {
+            // Play Adhan sound if enabled, or chime
+            if (currentCfg.adhanSoundEnabled) {
+              playAdhanAudio();
+            } else if (currentCfg.soundEnabled) {
               playPrayerCallChime();
             }
 
@@ -183,6 +203,11 @@ export function usePrayerReminder() {
     setConfig(updated);
   }, [config.soundEnabled]);
 
+  const toggleAdhanSound = useCallback(() => {
+    const updated = savePrayerReminderConfig({ adhanSoundEnabled: !config.adhanSoundEnabled });
+    setConfig(updated);
+  }, [config.adhanSoundEnabled]);
+
   const togglePopup = useCallback(() => {
     const updated = savePrayerReminderConfig({ popupEnabled: !config.popupEnabled });
     setConfig(updated);
@@ -194,6 +219,7 @@ export function usePrayerReminder() {
   }, []);
 
   const closeAlertModal = useCallback(() => {
+    stopAdhanAudio();
     setAlertModalState(null);
   }, []);
 
@@ -210,15 +236,27 @@ export function usePrayerReminder() {
     playPrayerCallChime();
   }, []);
 
+  const playAdhan = useCallback(() => {
+    playAdhanAudio();
+  }, []);
+
+  const stopAdhan = useCallback(() => {
+    stopAdhanAudio();
+  }, []);
+
   return {
     config,
     toggleEnabled,
     toggleSound,
+    toggleAdhanSound,
     togglePopup,
     updateConfig,
     alertModalState,
     closeAlertModal,
     testAlert,
     playChime,
+    playAdhan,
+    stopAdhan,
+    isAdhanPlaying: adhanActive,
   };
 }

@@ -188,17 +188,88 @@ export interface TimeGreetingInfo {
   badgeText: string;
 }
 
+/**
+ * Koleksi kalimat motivasi & pesan positif harian bervariasi sesuai waktu dan hari
+ */
+export const DAILY_POSITIVE_QUOTES: Record<'pagi' | 'siang' | 'sore' | 'malam', string[]> = {
+  pagi: [
+    // 0: Minggu
+    'Pagi yang damai! Siapkan energi positif, luangkan waktu bersyukur, dan rencanakan hari dengan penuh optimisme.',
+    // 1: Senin
+    'Awali pekan dengan tekad baru! Setiap langkah disiplin dan ikhtiar hari ini adalah bekal masa depan cemerlang.',
+    // 2: Selasa
+    'Pagi penuh berkah! Senyum, semangat, dan berikan dedikasi terbaik serta karya membanggakan di tempat PKL.',
+    // 3: Rabu
+    'Teruslah bertumbuh dan belajar hal baru. Kesungguhan, integritas, dan kejujuran adalah kunci sukses sejati.',
+    // 4: Kamis
+    'Pagi ceria! Disiplin dan konsistensi adalah jembatan emas antara impian besar dan pencapaian nyata.',
+    // 5: Jumat
+    'Jumat penuh berkah! Awali dengan niat tulus, perbanyak kebaikan, dan tebarkan manfaat bagi sesama.',
+    // 6: Sabtu
+    'Tetap produktif dan bersemangat! Setiap pengalaman berharga hari ini memperkaya wawasan serta keahlian Anda.',
+  ],
+  siang: [
+    // 0: Minggu
+    'Nikmati siang hari dengan tenang, bersyukur atas nikmat kebersamaan dan kesehatan yang prima.',
+    // 1: Senin
+    'Jaga fokus dan stamina! Luangkan rehat sejenak, nikmati santap siang, dan tunaikan sholat Dzuhur tepat waktu.',
+    // 2: Selasa
+    'Setiap tugas yang diselesaikan dengan rapi dan teliti adalah wujud nyata profesionalisme dan dedikasi Anda.',
+    // 3: Rabu
+    'Tetap terhidrasi dan jaga konsentrasi. Tetap ramah, santun, dan selalu solutif menghadapi tantangan.',
+    // 4: Kamis
+    'Siang produktif! Kembangkan terus keterampilan baru dan jalin komunikasi harmonis dengan rekan kerja.',
+    // 5: Jumat
+    'Tunaikan ibadah sholat Jumat / Dzuhur dengan khidmat. Rehat sejenak menyegarkan kembali fisik dan pikiran.',
+    // 6: Sabtu
+    'Manfaatkan siang hari dengan bijak, tetap antusias menyelesaikan amanah dengan hasil optimal.',
+  ],
+  sore: [
+    // 0: Minggu
+    'Menjelang petang hari libur, persiapkan fisik dan mental terbaik menyambut hari esok yang gemilang.',
+    // 1: Senin
+    'Kerja keras hari ini luar biasa! Jangan lupa presensi pulang dan catat jurnal harian dengan rapi.',
+    // 2: Selasa
+    'Satu hari berhasil dilewati dengan dedikasi. Luangkan waktu sholat Ashar dan evaluasi capaian Anda hari ini.',
+    // 3: Rabu
+    'Apresiasi diri atas setiap pencapaian hari ini. Rapikan perlengkapan kerja dan selesaikan presensi tertib.',
+    // 4: Kamis
+    'Menjelang petang, pastikan semua tanggung jawab tuntas dan tetap berhati-hati dalam perjalanan pulang.',
+    // 5: Jumat
+    'Alhamdulillah tugas sepekan terlaksana lancar. Selamat menikmati akhir pekan penuh kehangatan bersama keluarga.',
+    // 6: Sabtu
+    'Sore yang santai dan penuh rasa syukur. Jaga keselamatan serta nikmati momen berharga bersama orang tercinta.',
+  ],
+  malam: [
+    // 0: Minggu
+    'Tidur lebih awal malam ini agar bangun esok pagi dalam kondisi segar, bugar, dan bersemangat menyambut pekan baru.',
+    // 1: Senin
+    'Selamat beristirahat. Lepaskan penat hari ini, bersyukur atas ilmu baru, dan nikmati tidur yang berkualitas.',
+    // 2: Selasa
+    'Malam tenang dan damai. Pulihkan fisik serta pikiran untuk menyongsong hari esok yang lebih cemerlang.',
+    // 3: Rabu
+    'Malam adalah waktu terbaik menenangkan jiwa, berdoa, dan menghimpun energi positif untuk esok hari.',
+    // 4: Kamis
+    'Malam yang penuh ketenangan. Rehat berkualitas adalah investasi terbaik untuk kesehatan jangka panjang.',
+    // 5: Jumat
+    'Selamat berakhir pekan! Nikmati waktu istirahat yang membahagiakan dan pulihkan tenaga sepenuhnya.',
+    // 6: Sabtu
+    'Selamat malam dan selamat beristirahat, biarkan tubuh dan pikiran beristirahat optimal tanpa beban.',
+  ],
+};
+
 export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
   const hours = date.getHours();
   const minutes = date.getMinutes();
   const totalMinutes = hours * 60 + minutes;
+  const dayOfWeek = date.getDay(); // 0 = Minggu, 1 = Senin, ... 6 = Sabtu
 
   // 04:00 - 10:59 -> Selamat Pagi
   if (totalMinutes >= 4 * 60 && totalMinutes < 11 * 60) {
     return {
       period: 'pagi',
       greeting: 'Selamat Pagi',
-      subGreeting: 'Awali aktivitas dengan semangat dan integritas terbaik.',
+      subGreeting: DAILY_POSITIVE_QUOTES.pagi[dayOfWeek] || 'Awali aktivitas dengan semangat dan integritas terbaik.',
       timeRange: '04:00 - 10:59 WIB',
       iconName: 'Sunrise',
       badgeBg: 'bg-amber-50 dark:bg-amber-950/50',
@@ -212,7 +283,7 @@ export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
     return {
       period: 'siang',
       greeting: 'Selamat Siang',
-      subGreeting: 'Jaga fokus di tempat magang dan luangkan rehat secukupnya.',
+      subGreeting: DAILY_POSITIVE_QUOTES.siang[dayOfWeek] || 'Jaga fokus di tempat magang dan luangkan rehat secukupnya.',
       timeRange: '11:00 - 14:59 WIB',
       iconName: 'Sun',
       badgeBg: 'bg-sky-50 dark:bg-sky-950/50',
@@ -226,7 +297,7 @@ export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
     return {
       period: 'sore',
       greeting: 'Selamat Sore',
-      subGreeting: 'Pastikan presensi pulang tercatat dan jurnal harian terisi rapi.',
+      subGreeting: DAILY_POSITIVE_QUOTES.sore[dayOfWeek] || 'Pastikan presensi pulang tercatat dan jurnal harian terisi rapi.',
       timeRange: '15:00 - 18:29 WIB',
       iconName: 'Sunset',
       badgeBg: 'bg-orange-50 dark:bg-orange-950/50',
@@ -239,7 +310,7 @@ export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
   return {
     period: 'malam',
     greeting: 'Selamat Malam',
-    subGreeting: 'Selamat beristirahat dan pulihkan energi untuk aktivitas esok hari.',
+    subGreeting: DAILY_POSITIVE_QUOTES.malam[dayOfWeek] || 'Selamat beristirahat dan pulihkan energi untuk aktivitas esok hari.',
     timeRange: '18:30 - 03:59 WIB',
     iconName: 'Moon',
     badgeBg: 'bg-indigo-50 dark:bg-indigo-950/50',

@@ -274,13 +274,15 @@ export function calculateKemenagPrayerTimes(
 
 /**
  * Converts Gregorian date to estimated Islamic Hijri Date string
+ * Sanitized to ensure mobile smartphones and desktop browsers match perfectly,
+ * avoiding mobile ICU bugs that incorrectly emit 'SM' or Gregorian month names like 'April'.
  */
-export function getEstimatedHijriDate(date: Date): string {
+export function getEstimatedHijriDate(date: Date = new Date()): string {
   const hijriMonths = [
     'Muharram',
     'Safar',
-    "Rabi'ul Awwal",
-    "Rabi'ul Akhir",
+    'Rabiul Awwal',
+    'Rabiulakhir',
     'Jumadil Awwal',
     'Jumadil Akhir',
     'Rajab',
@@ -291,36 +293,98 @@ export function getEstimatedHijriDate(date: Date): string {
     'Dzulhijjah',
   ];
 
+  const gregorianNames = [
+    'januari', 'februari', 'maret', 'april', 'mei', 'juni',
+    'juli', 'agustus', 'september', 'oktober', 'november', 'desember',
+    'january', 'february', 'march', 'may', 'june', 'july', 'august', 'october', 'december'
+  ];
+
+  let rawFormatted = '';
   try {
     const formatter = new Intl.DateTimeFormat('id-ID-u-ca-islamic-umalqura', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
     });
-    return formatter.format(date);
+    rawFormatted = formatter.format(date);
   } catch {
-    const jd =
-      date.getTime() / 86400000 +
-      2440587.5 -
-      date.getTimezoneOffset() / 1440;
-    const l = Math.floor(jd - 1948440 + 10632);
-    const n = Math.floor((l - 1) / 10631);
-    const l2 = l - 10631 * n + 354;
-    const j =
-      Math.floor((10985 - l2) / 5316) * Math.floor((50 * l2) / 17719) +
-      Math.floor(l2 / 5670) * Math.floor((43 * l2) / 15238);
-    const l3 =
-      l2 -
-      Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) -
-      Math.floor(j / 16) * Math.floor((15238 * j) / 43) +
-      29;
-    const m = Math.floor((24 * l3) / 709);
-    const d = l3 - Math.floor((709 * m) / 24);
-    const y = 30 * n + j - 30;
-
-    const monthName = hijriMonths[(m - 1 + 12) % 12];
-    return `${d} ${monthName} ${y} H`;
+    try {
+      const formatter = new Intl.DateTimeFormat('id-ID-u-ca-islamic', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+      rawFormatted = formatter.format(date);
+    } catch {}
   }
+
+  const lower = rawFormatted.toLowerCase();
+  const hasGregorian = gregorianNames.some((g) => lower.includes(g));
+  const hasSM = /\b(sm|bc|bce)\b/i.test(rawFormatted);
+
+  // If Intl format is completely healthy (Islamic month without SM or Gregorian substitute)
+  if (rawFormatted && !hasGregorian && !hasSM) {
+    let cleaned = rawFormatted.trim();
+    // Normalize "Rabi'ul Akhir" / "Rabiul Akhir" to "Rabiulakhir" for exact consistency
+    cleaned = cleaned.replace(/Rabi['’]?ul\s*Akhir/gi, 'Rabiulakhir');
+    if (!cleaned.endsWith('H') && !cleaned.endsWith('H.')) {
+      cleaned += ' H';
+    }
+    return cleaned;
+  }
+
+  // Fallback / Sanitizer for Mobile Smartphone ICU Bug (e.g. "4 April 1448 SM"):
+  // Extract parsed day and year from the Intl formatted string if available
+  const numMatches = rawFormatted.match(/\d+/g);
+  let parsedDay: number | null = null;
+  let parsedYear: number | null = null;
+  if (numMatches && numMatches.length >= 2) {
+    const p1 = parseInt(numMatches[0], 10);
+    const p2 = parseInt(numMatches[numMatches.length - 1], 10);
+    if (p1 >= 1 && p1 <= 30) parsedDay = p1;
+    if (p2 >= 1400 && p2 <= 1500) parsedYear = p2;
+  }
+
+  // Calculate astronomical Julian day
+  const jd =
+    date.getTime() / 86400000 +
+    2440587.5 -
+    date.getTimezoneOffset() / 1440;
+  const l = Math.floor(jd - 1948440 + 10632);
+  const n = Math.floor((l - 1) / 10631);
+  const l2 = l - 10631 * n + 354;
+  const j =
+    Math.floor((10985 - l2) / 5316) * Math.floor((50 * l2) / 17719) +
+    Math.floor(l2 / 5670) * Math.floor((43 * l2) / 15238);
+  const l3 =
+    l2 -
+    Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) -
+    Math.floor(j / 16) * Math.floor((15238 * j) / 43) +
+    29;
+  const m = Math.floor((24 * l3) / 709);
+  const calcDay = l3 - Math.floor((709 * m) / 24);
+  const calcYear = 30 * n + j - 30;
+
+  // Resolve month index
+  let monthIndex = (m - 1 + 12) % 12;
+  if (lower.includes('april')) monthIndex = 3; // Month 4 is Rabiulakhir
+  else if (lower.includes('januari')) monthIndex = 0; // Muharram
+  else if (lower.includes('februari')) monthIndex = 1; // Safar
+  else if (lower.includes('maret')) monthIndex = 2; // Rabiul Awwal
+  else if (lower.includes('mei')) monthIndex = 4; // Jumadil Awwal
+  else if (lower.includes('juni')) monthIndex = 5; // Jumadil Akhir
+  else if (lower.includes('juli')) monthIndex = 6; // Rajab
+  else if (lower.includes('agustus')) monthIndex = 7; // Sya'ban
+  else if (lower.includes('september')) monthIndex = 8; // Ramadhan
+  else if (lower.includes('oktober')) monthIndex = 9; // Syawwal
+  else if (lower.includes('november')) monthIndex = 10; // Dzulqa'dah
+  else if (lower.includes('desember')) monthIndex = 11; // Dzulhijjah
+
+  const dayFinal = parsedDay || calcDay;
+  const yearFinal = parsedYear || calcYear;
+  const monthFinal = hijriMonths[monthIndex];
+
+  return `${dayFinal} ${monthFinal} ${yearFinal} H`;
 }
 
 /**
@@ -654,6 +718,7 @@ export function usePrayerTimes() {
 export interface PrayerReminderConfig {
   enabled: boolean; // Master On / Off switch
   soundEnabled: boolean; // Audio chime On / Off switch
+  adhanSoundEnabled: boolean; // Kumandang Suara Adzan Otomatis saat Masuk Waktu Sholat (On / Off)
   popupEnabled: boolean; // Modal Pop-up On / Off switch
   notifySubuh: boolean;
   notifyDzuhur: boolean;
@@ -679,6 +744,7 @@ export const STORAGE_PRAYER_LAST_ALERT = 'pkl_prayer_last_alert_key';
 export const DEFAULT_PRAYER_REMINDER_CONFIG: PrayerReminderConfig = {
   enabled: true,
   soundEnabled: true,
+  adhanSoundEnabled: true,
   popupEnabled: true,
   notifySubuh: true,
   notifyDzuhur: true,
@@ -699,6 +765,7 @@ export function getSavedPrayerReminderConfig(): PrayerReminderConfig {
     return {
       enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
       soundEnabled: parsed.soundEnabled !== undefined ? Boolean(parsed.soundEnabled) : true,
+      adhanSoundEnabled: parsed.adhanSoundEnabled !== undefined ? Boolean(parsed.adhanSoundEnabled) : true,
       popupEnabled: parsed.popupEnabled !== undefined ? Boolean(parsed.popupEnabled) : true,
       notifySubuh: parsed.notifySubuh !== undefined ? Boolean(parsed.notifySubuh) : true,
       notifyDzuhur: parsed.notifyDzuhur !== undefined ? Boolean(parsed.notifyDzuhur) : true,
