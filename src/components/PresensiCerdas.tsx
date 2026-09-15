@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Camera,
   MapPin,
@@ -24,8 +24,24 @@ import {
   Upload,
   Zap,
   Cloud,
+  History,
+  HeartPulse,
+  ChevronRight,
+  ShieldCheck,
+  ExternalLink,
+  Bell,
+  BellRing,
+  Volume2,
+  VolumeX,
+  Search,
+  Filter,
+  X,
+  BookOpen,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import { Siswa, DUDI, Presensi, StatusPresensi, User, ShiftKerja } from '../types';
+import { Siswa, DUDI, Presensi, StatusPresensi, User, ShiftKerja, JurnalHarian } from '../types';
 import { calculateDistanceMeters, formatDistance } from '../utils/geo';
 import { DEFAULT_SELFIE_PREVIEW } from '../data/initialData';
 import {
@@ -34,6 +50,7 @@ import {
   getRecommendedShift,
   calculateKetepatan,
 } from '../utils/shiftHelper';
+import { playReminderChime, playSyncSuccessChime } from '../utils/audioNotification';
 import { StatistikKehadiranWidget } from './StatistikKehadiranWidget';
 import {
   compressImageFile,
@@ -52,13 +69,17 @@ interface PresensiCerdasProps {
   siswaList: Siswa[];
   dudiList: DUDI[];
   presensiList: Presensi[];
+  jurnalList?: JurnalHarian[];
   onSavePresensi: (presensi: Presensi, sendWA: boolean) => Promise<void> | void;
   onOpenWhatsAppModal: () => void;
   isOnline?: boolean;
   pendingOfflineCount?: number;
   onTriggerSync?: () => void;
   isSyncing?: boolean;
+  syncProgress?: number;
+  syncPhase?: 'idle' | 'offline' | 'reconnecting' | 'syncing' | 'completed';
   onSelectSiswaDetail?: (siswa: Siswa) => void;
+  onNavigateTab?: (tab: string) => void;
   showStatistikWidget?: boolean;
 }
 
@@ -67,13 +88,17 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
   siswaList,
   dudiList,
   presensiList,
+  jurnalList = [],
   onSavePresensi,
   onOpenWhatsAppModal,
   isOnline = true,
   pendingOfflineCount = 0,
   onTriggerSync,
   isSyncing = false,
+  syncProgress = 100,
+  syncPhase = 'idle',
   onSelectSiswaDetail,
+  onNavigateTab,
   showStatistikWidget = false,
 }) => {
   // Find current student or first student if admin/guru
@@ -94,10 +119,17 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
   const todayDayName = getNamaHari(todayDateStr);
   const isWorkDay = isHariKerjaDUDI(assignedDUDI, todayDayName);
 
-  // Current time for shift matching and punctuality
-  const now = new Date();
-  const currentTimeHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const currentTimeHHMMSS = `${currentTimeHHMM}:${String(now.getSeconds()).padStart(2, '0')}`;
+  // Live Real-Time Ticking Clock (updates every second for precision countdown & punctuality evaluation)
+  const [currentLiveDate, setCurrentLiveDate] = useState<Date>(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentLiveDate(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const currentTimeHHMM = `${String(currentLiveDate.getHours()).padStart(2, '0')}:${String(currentLiveDate.getMinutes()).padStart(2, '0')}`;
+  const currentTimeHHMMSS = `${currentTimeHHMM}:${String(currentLiveDate.getSeconds()).padStart(2, '0')}`;
 
   // Shift state: initialized to best matching shift for today
   const [selectedShift, setSelectedShift] = useState<ShiftKerja>(() =>
@@ -108,6 +140,57 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
   useEffect(() => {
     setSelectedShift(getRecommendedShift(assignedDUDI, todayDayName, currentTimeHHMM));
   }, [assignedDUDI.id_dudi, todayDayName]);
+
+  // Audio & Notification Preferences for Automatic Reminders
+  const [audioReminderEnabled, setAudioReminderEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pkl_audio_reminder_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleAudio = () => {
+    setAudioReminderEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pkl_audio_reminder_enabled', String(next));
+      } catch (e) {
+        console.error(e);
+      }
+      if (next) playReminderChime();
+      return next;
+    });
+  };
+
+  const [hasDismissedReminder, setHasDismissedReminder] = useState<boolean>(false);
+  const [browserNotifStatus, setBrowserNotifStatus] = useState<string>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'unsupported';
+  });
+
+  const requestBrowserNotificationPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission();
+        setBrowserNotifStatus(perm);
+        if (perm === 'granted') {
+          playReminderChime();
+          new Notification('Notifikasi Presensi PKL Aktif', {
+            body: 'Anda akan menerima pengingat otomatis sebelum batas jam masuk berakhir.',
+            icon: '/vite.svg',
+          });
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  // Track chime triggers to prevent sound spam
+  const lastChimeStageRef = useRef<'none' | '15m' | '5m'>('none');
 
   // Attendance state
   const [selectedStatus, setSelectedStatus] = useState<StatusPresensi>('Hadir');
@@ -146,6 +229,191 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
   const todayAttendance = presensiList.find(
     (p) => p.id_siswa === currentSiswa?.id_siswa && p.tanggal === todayDateStr
   );
+
+  // Calculate Shift Entry Countdown & Deadline Metrics
+  const reminderMetrics = useMemo(() => {
+    const shift = selectedShift || assignedDUDI.daftar_shift?.[0] || {
+      jam_masuk: assignedDUDI.jam_masuk_standar || '07:30',
+      jam_pulang: assignedDUDI.jam_pulang_standar || '16:00',
+      toleransi_keterlambatan_menit: assignedDUDI.toleransi_keterlambatan_menit || 15,
+      nama_shift: 'Shift Standar',
+    };
+
+    const [hMasuk, mMasuk] = (shift.jam_masuk || '07:30').split(':').map(Number);
+    const toleransi = shift.toleransi_keterlambatan_menit !== undefined ? shift.toleransi_keterlambatan_menit : 15;
+
+    // Shift start time in seconds from midnight
+    const shiftStartSec = (hMasuk * 60 + mMasuk) * 60;
+    // Cutoff deadline (jam masuk + toleransi) in seconds from midnight
+    const cutoffSec = shiftStartSec + toleransi * 60;
+
+    // Current time in seconds from midnight
+    const currSec = currentLiveDate.getHours() * 3600 + currentLiveDate.getMinutes() * 60 + currentLiveDate.getSeconds();
+
+    // Remaining seconds until deadline
+    const secondsRemaining = cutoffSec - currSec;
+    const secondsUntilStart = shiftStartSec - currSec;
+
+    // Format cutoff time HH:MM
+    const cutoffHour = Math.floor(cutoffSec / 3600) % 24;
+    const cutoffMinute = Math.floor((cutoffSec % 3600) / 60);
+    const cutoffHHMM = `${String(cutoffHour).padStart(2, '0')}:${String(cutoffMinute).padStart(2, '0')}`;
+
+    let stage: 'upcoming' | 'urgent_15m' | 'critical_5m' | 'late' = 'upcoming';
+    if (secondsRemaining <= 0) {
+      stage = 'late';
+    } else if (secondsRemaining <= 300) {
+      stage = 'critical_5m';
+    } else if (secondsRemaining <= 900) {
+      stage = 'urgent_15m';
+    }
+
+    // Format remaining time nicely
+    const absRemaining = Math.abs(secondsRemaining);
+    const remHours = Math.floor(absRemaining / 3600);
+    const remMinutes = Math.floor((absRemaining % 3600) / 60);
+    const remSeconds = absRemaining % 60;
+
+    const formattedCountdown =
+      remHours > 0
+        ? `${remHours} jam ${remMinutes} mnt ${remSeconds} dtk`
+        : `${String(remMinutes).padStart(2, '0')}:${String(remSeconds).padStart(2, '0')}`;
+
+    return {
+      shift,
+      jamMasuk: shift.jam_masuk,
+      cutoffHHMM,
+      toleransi,
+      secondsRemaining,
+      secondsUntilStart,
+      stage,
+      isExpired: secondsRemaining <= 0,
+      formattedCountdown,
+    };
+  }, [selectedShift, assignedDUDI, currentLiveDate]);
+
+  // Audio and Browser Notification Trigger for Automatic Reminders
+  useEffect(() => {
+    if (todayAttendance) return; // already checked in
+
+    if (reminderMetrics.stage === 'critical_5m' && lastChimeStageRef.current !== '5m') {
+      lastChimeStageRef.current = '5m';
+      if (audioReminderEnabled) {
+        playReminderChime();
+      }
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('⚠️ Sisa Waktu Presensi < 5 Menit!', {
+            body: `Segera lakukan presensi sebelum ${reminderMetrics.cutoffHHMM} WIB agar tetap tercatat Tepat Waktu.`,
+            icon: '/vite.svg',
+          });
+        } catch (e) {
+          console.warn('Browser notification error:', e);
+        }
+      }
+    } else if (reminderMetrics.stage === 'urgent_15m' && lastChimeStageRef.current === 'none') {
+      lastChimeStageRef.current = '15m';
+      if (audioReminderEnabled) {
+        playReminderChime();
+      }
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('⏰ Pengingat Presensi PKL', {
+            body: `Sisa waktu presensi tepat waktu tinggal ${Math.ceil(reminderMetrics.secondsRemaining / 60)} menit lagi (batas ${reminderMetrics.cutoffHHMM} WIB).`,
+            icon: '/vite.svg',
+          });
+        } catch (e) {
+          console.warn('Browser notification error:', e);
+        }
+      }
+    }
+  }, [
+    reminderMetrics.stage,
+    todayAttendance,
+    audioReminderEnabled,
+    reminderMetrics.cutoffHHMM,
+    reminderMetrics.secondsRemaining,
+  ]);
+
+  // Mini History Search and Filter States
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+  const [historyDatePreset, setHistoryDatePreset] = useState<'all' | 'today' | '7days' | 'month' | 'custom'>('all');
+  const [historyCustomDate, setHistoryCustomDate] = useState<string>('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'Hadir' | 'Izin' | 'Sakit'>('all');
+  const [historyKetepatanFilter, setHistoryKetepatanFilter] = useState<'all' | 'Tepat Waktu' | 'Terlambat'>('all');
+  const [historyJurnalFilter, setHistoryJurnalFilter] = useState<'all' | 'with_journal' | 'without_journal'>('all');
+  const [isFilterExpanded, setIsFilterExpanded] = useState<boolean>(false);
+
+  // Filtered Student Attendance History
+  const studentHistory = useMemo(() => {
+    return presensiList.filter((p) => p.id_siswa === currentSiswa?.id_siswa);
+  }, [presensiList, currentSiswa?.id_siswa]);
+
+  const filteredStudentHistory = useMemo(() => {
+    return studentHistory.filter((p) => {
+      // 1. Text Search query
+      if (historySearchQuery.trim()) {
+        const q = historySearchQuery.toLowerCase();
+        const matchKeterangan = p.keterangan?.toLowerCase().includes(q);
+        const matchTanggal = p.tanggal.toLowerCase().includes(q);
+        const matchHari = p.hari?.toLowerCase().includes(q);
+        const matchShift = p.nama_shift?.toLowerCase().includes(q);
+        const matchStatus = p.status.toLowerCase().includes(q);
+        const matchKetepatan = p.status_ketepatan?.toLowerCase().includes(q);
+        if (!matchKeterangan && !matchTanggal && !matchHari && !matchShift && !matchStatus && !matchKetepatan) {
+          return false;
+        }
+      }
+
+      // 2. Status Filter
+      if (historyStatusFilter !== 'all' && p.status !== historyStatusFilter) {
+        return false;
+      }
+
+      // 3. Ketepatan Filter
+      if (historyKetepatanFilter !== 'all' && p.status_ketepatan !== historyKetepatanFilter) {
+        return false;
+      }
+
+      // 4. Date Preset Filter
+      if (historyDatePreset === 'today') {
+        if (p.tanggal !== todayDateStr) return false;
+      } else if (historyDatePreset === '7days') {
+        const itemDate = new Date(p.tanggal);
+        const diffDays = (new Date().getTime() - itemDate.getTime()) / (1000 * 3600 * 24);
+        if (diffDays > 7) return false;
+      } else if (historyDatePreset === 'month') {
+        const itemDate = new Date(p.tanggal);
+        const nowMonth = new Date().getMonth();
+        const nowYear = new Date().getFullYear();
+        if (itemDate.getMonth() !== nowMonth || itemDate.getFullYear() !== nowYear) return false;
+      } else if (historyDatePreset === 'custom' && historyCustomDate) {
+        if (p.tanggal !== historyCustomDate) return false;
+      }
+
+      // 5. Journal Filter
+      if (historyJurnalFilter !== 'all') {
+        const hasJournal = jurnalList.some(
+          (j) => j.id_siswa === currentSiswa?.id_siswa && j.tanggal === p.tanggal
+        );
+        if (historyJurnalFilter === 'with_journal' && !hasJournal) return false;
+        if (historyJurnalFilter === 'without_journal' && hasJournal) return false;
+      }
+
+      return true;
+    });
+  }, [
+    studentHistory,
+    historySearchQuery,
+    historyStatusFilter,
+    historyKetepatanFilter,
+    historyDatePreset,
+    historyCustomDate,
+    historyJurnalFilter,
+    todayDateStr,
+    jurnalList,
+    currentSiswa?.id_siswa,
+  ]);
 
   // Calculate distance
   const calculatedDistance = useSimulatedGPS
@@ -713,6 +981,248 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
         )}
       </div>
 
+      {/* 1. NOTIFIKASI OTOMATIS PENGINGAT PRESENSI SEBELUM JAM MASUK BERAKHIR */}
+      {!hasDismissedReminder && (
+        <div
+          id="card-automatic-attendance-reminder"
+          className={`rounded-2xl p-4 border transition-all duration-300 relative overflow-hidden shadow-xs ${
+            todayAttendance
+              ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200'
+              : reminderMetrics.stage === 'critical_5m'
+              ? 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-400/80 dark:border-rose-700/80 text-rose-950 dark:text-rose-200 ring-2 ring-rose-500/30 animate-pulse'
+              : reminderMetrics.stage === 'urgent_15m'
+              ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200'
+              : reminderMetrics.stage === 'late'
+              ? 'bg-rose-50/80 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-950 dark:text-rose-200'
+              : 'bg-sky-50/80 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800 text-sky-950 dark:text-sky-200'
+          }`}
+        >
+          {/* Subtle decorative background bar */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  todayAttendance
+                    ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-300'
+                    : reminderMetrics.stage === 'critical_5m'
+                    ? 'bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-300 animate-bounce'
+                    : reminderMetrics.stage === 'urgent_15m'
+                    ? 'bg-amber-100 dark:bg-amber-900 text-amber-600 dark:text-amber-300'
+                    : reminderMetrics.stage === 'late'
+                    ? 'bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-300'
+                    : 'bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300'
+                }`}
+              >
+                {todayAttendance ? (
+                  <CheckCircle2 className="w-5 h-5" />
+                ) : reminderMetrics.stage === 'critical_5m' || reminderMetrics.stage === 'urgent_15m' ? (
+                  <BellRing className="w-5 h-5" />
+                ) : (
+                  <Bell className="w-5 h-5" />
+                )}
+              </div>
+
+              <div className="space-y-1 flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-xs font-bold uppercase tracking-wider">
+                    {todayAttendance
+                      ? 'Status Presensi Hari Ini: Sudah Masuk'
+                      : reminderMetrics.stage === 'critical_5m'
+                      ? '⚠️ PERINGATAN KRITIS: BATAS JAM MASUK SEGERA BERAKHIR!'
+                      : reminderMetrics.stage === 'urgent_15m'
+                      ? '⏰ PENGINGAT: SISA WAKTU PRESENSI TEPAT WAKTU'
+                      : reminderMetrics.stage === 'late'
+                      ? '⚠️ Batas Waktu Masuk Telah Berakhir'
+                      : 'ℹ️ Jadwal Jam Masuk Shift Hari Ini'}
+                  </h4>
+
+                  {!todayAttendance && !reminderMetrics.isExpired && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-extrabold bg-white/80 dark:bg-slate-900/80 border border-current shadow-2xs">
+                      Sisa: {reminderMetrics.formattedCountdown}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs leading-relaxed opacity-90">
+                  {todayAttendance ? (
+                    <>
+                      Kehadiran Anda telah dicatat pada pukul <strong>{todayAttendance.jam_masuk} WIB</strong> ({todayAttendance.status_ketepatan || 'Tepat Waktu'}). Jangan lupa untuk melakukan absensi pulang saat jam kerja selesai.
+                    </>
+                  ) : reminderMetrics.stage === 'critical_5m' ? (
+                    <>
+                      Tersisa kurang dari <strong>5 menit</strong> sebelum pukul <strong>{reminderMetrics.cutoffHHMM} WIB</strong> (Jam masuk {reminderMetrics.jamMasuk} + toleransi {reminderMetrics.toleransi} mnt). Lakukan presensi sekarang agar tetap tercatat <strong>Tepat Waktu</strong>!
+                    </>
+                  ) : reminderMetrics.stage === 'urgent_15m' ? (
+                    <>
+                      Waktu toleransi tepat waktu untuk <strong>{reminderMetrics.shift.nama_shift}</strong> berakhir pada pukul <strong>{reminderMetrics.cutoffHHMM} WIB</strong>. Segera ambil foto selfie dan kirim presensi.
+                    </>
+                  ) : reminderMetrics.stage === 'late' ? (
+                    <>
+                      Batas waktu masuk shift (<strong>{reminderMetrics.cutoffHHMM} WIB</strong>) telah terlampaui. Presensi masuk saat ini akan tercatat dengan evaluasi <strong>Terlambat</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Jam masuk shift <strong>{reminderMetrics.shift.nama_shift}</strong> adalah pukul <strong>{reminderMetrics.jamMasuk} WIB</strong> dengan batas toleransi tepat waktu sampai <strong>{reminderMetrics.cutoffHHMM} WIB</strong>.
+                    </>
+                  )}
+                </p>
+
+                {/* Quick Action Controls for Reminder */}
+                <div className="pt-1.5 flex items-center gap-2 flex-wrap">
+                  {!todayAttendance && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const submitSection = document.getElementById('btn-submit-presensi');
+                        if (submitSection) {
+                          submitSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                        if (!isCameraActive && !capturedPhoto) {
+                          startCamera();
+                        }
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-xs cursor-pointer ${
+                        reminderMetrics.stage === 'critical_5m'
+                          ? 'bg-rose-600 text-white hover:bg-rose-700 active:scale-95'
+                          : 'bg-slate-900 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 active:scale-95'
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>{reminderMetrics.isExpired ? 'Catat Presensi Sekarang' : 'Presensi Tepat Waktu Sekarang'}</span>
+                    </button>
+                  )}
+
+                  {/* Audio Chime Mute/Unmute Toggle */}
+                  <button
+                    type="button"
+                    onClick={handleToggleAudio}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-white/70 dark:bg-slate-800/70 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                    title={audioReminderEnabled ? 'Suara pengingat aktif (Klik untuk membisukan)' : 'Suara pengingat nonaktif (Klik untuk mengaktifkan)'}
+                  >
+                    {audioReminderEnabled ? (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-slate-700 dark:text-slate-300">Suara Aktif</span>
+                      </>
+                    ) : (
+                      <>
+                        <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-slate-500">Suara Senyap</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Browser Push Notification Permission Button if not yet granted */}
+                  {browserNotifStatus === 'default' && (
+                    <button
+                      type="button"
+                      onClick={requestBrowserNotificationPermission}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-white/70 dark:bg-slate-800/70 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sky-700 dark:text-sky-300 transition cursor-pointer"
+                    >
+                      <Bell className="w-3 h-3" />
+                      <span>Aktifkan Notifikasi Web</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setHasDismissedReminder(true)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition"
+              aria-label="Tutup Pengingat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. ENHANCED INDIKATOR VISUAL OFFLINE-TO-ONLINE DENGAN ANIMASI PROGRESS */}
+      {(!isOnline || syncPhase === 'reconnecting' || syncPhase === 'syncing' || syncPhase === 'completed' || isSyncing) && (
+        <div
+          id="card-offline-sync-progress"
+          className={`rounded-2xl p-4 border transition-all duration-300 space-y-2.5 ${
+            !isOnline
+              ? 'bg-rose-500/10 border-rose-500/30 text-rose-900 dark:text-rose-200'
+              : syncPhase === 'completed'
+              ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-950 dark:text-emerald-200'
+              : 'bg-sky-500/15 border-sky-500/40 text-sky-950 dark:text-sky-200'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  !isOnline
+                    ? 'bg-rose-500 text-white animate-pulse'
+                    : syncPhase === 'completed'
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-sky-500 text-white'
+                }`}
+              >
+                {!isOnline ? (
+                  <WifiOff className="w-4 h-4" />
+                ) : syncPhase === 'completed' ? (
+                  <CheckCircle2 className="w-4 h-4 animate-bounce" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                )}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider">
+                  {!isOnline
+                    ? 'Mode Offline Aktif (Penyimpanan Aman Lokal)'
+                    : syncPhase === 'completed'
+                    ? '✓ Sinkronisasi Cloud 100% Selesai'
+                    : `Menyinkronkan ke Database Cloud (${syncProgress}%)`}
+                </h4>
+                <p className="text-[11px] opacity-90">
+                  {!isOnline
+                    ? `Perangkat terputus dari internet.${pendingOfflineCount > 0 ? ` ${pendingOfflineCount} presensi tersimpan di antrean perangkat.` : ' Anda tetap dapat melakukan absensi.'}`
+                    : syncPhase === 'completed'
+                    ? 'Semua data presensi & foto offline berhasil diunggah ke Firebase Firestore & Google Drive.'
+                    : 'Memulihkan koneksi dan memindahkan data presensi lokal ke Firebase Firestore...'}
+                </p>
+              </div>
+            </div>
+
+            {isOnline && onTriggerSync && (
+              <button
+                type="button"
+                onClick={onTriggerSync}
+                disabled={isSyncing}
+                className="px-2.5 py-1.5 text-[11px] font-bold rounded-xl bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 shrink-0 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-sky-500' : ''}`} />
+                <span>{isSyncing ? 'Proses...' : 'Sync Sekarang'}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Animated Progress Bar */}
+          {isOnline && (
+            <div className="space-y-1">
+              <div className="w-full bg-slate-200/80 dark:bg-slate-800/80 rounded-full h-2 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 rounded-full ${
+                    syncPhase === 'completed'
+                      ? 'bg-emerald-500'
+                      : 'bg-gradient-to-r from-sky-500 via-indigo-500 to-emerald-400 animate-pulse'
+                  }`}
+                  style={{ width: `${Math.max(8, syncProgress)}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono opacity-80">
+                <span>{syncPhase === 'reconnecting' ? 'Tahap 1: Menghubungkan...' : syncPhase === 'syncing' ? 'Tahap 2: Mengunggah data...' : 'Status: Siap'}</span>
+                <span>{syncProgress}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SHIFT & JADWAL KONDISIONAL SELECTOR CARD */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3 transition-colors">
         <div className="flex items-center justify-between">
@@ -804,16 +1314,16 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
         </div>
 
         {/* Live Punctuality Indicator */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span className="text-[11px] text-slate-500 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-slate-400" />
+        <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 font-medium">
+            <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-400" />
             Evaluasi Ketepatan Waktu:
           </span>
           <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
               punctualityLive.status === 'Tepat Waktu'
-                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                : 'bg-rose-100 text-rose-800 border border-rose-200'
+                ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                : 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
             }`}
           >
             {punctualityLive.deskripsi}
@@ -823,25 +1333,25 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
 
       {/* Today Attendance Status Banner if already checked in */}
       {todayAttendance && (
-        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+        <div className="bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300/80 dark:border-emerald-800 rounded-2xl p-4 sm:p-4.5 flex items-start gap-3 shadow-xs transition-colors">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-emerald-950 dark:text-emerald-200 uppercase tracking-wider">
+          <div className="flex-1 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-xs sm:text-sm font-bold text-emerald-950 dark:text-emerald-200 uppercase tracking-wider">
                 Presensi Hari Ini Telah Dicatat
               </h4>
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+              <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 shrink-0">
                 {todayAttendance.status}
               </span>
             </div>
-            <p className="text-xs text-emerald-800 dark:text-emerald-300">
-              Masuk: <strong>{todayAttendance.jam_masuk} WIB</strong> | Pulang:{' '}
-              <strong>{todayAttendance.jam_pulang ? `${todayAttendance.jam_pulang} WIB` : 'Belum Absen Pulang'}</strong>
+            <p className="text-xs sm:text-sm text-emerald-850 dark:text-emerald-300">
+              Masuk: <strong className="font-bold">{todayAttendance.jam_masuk} WIB</strong> | Pulang:{' '}
+              <strong className="font-bold">{todayAttendance.jam_pulang ? `${todayAttendance.jam_pulang} WIB` : 'Belum Absen Pulang'}</strong>
             </p>
 
             {/* Cloud & Realtime Sync Status Indicator */}
-            <div className="pt-1 flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+            <div className="pt-0.5 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                 <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                 <span>Tersimpan &amp; Sinkron Realtime (Firestore &amp; Drive)</span>
               </span>
@@ -852,14 +1362,14 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                 id="btn-absen-pulang"
                 disabled={isSubmitting}
                 onClick={() => handleSubmit(true)}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 dark:bg-emerald-600 text-white hover:bg-emerald-800 dark:hover:bg-emerald-500 transition shadow-xs disabled:opacity-60 cursor-pointer"
+                className="mt-2.5 w-full sm:w-auto min-h-[48px] inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl bg-emerald-600 dark:bg-emerald-600 text-white hover:bg-emerald-700 dark:hover:bg-emerald-500 transition shadow-md active:scale-98 disabled:opacity-60 cursor-pointer"
               >
                 {isSubmitting ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Clock className="w-3.5 h-3.5" />
+                  <Clock className="w-4 h-4" />
                 )}
-                <span>{isSubmitting ? 'Mencatat Absen Pulang...' : 'Catat Absen Pulang Sekarang'}</span>
+                <span>{isSubmitting ? 'Mencatat Absen Pulang...' : 'Catat Absen Pulang Sekarang (Thumb-Tap)'}</span>
               </button>
             )}
           </div>
@@ -890,32 +1400,32 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
       )}
 
       {/* Main Attendance Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4 transition-colors">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4 transition-colors">
         <div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Form Presensi Mandiri</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">Form Presensi Mandiri</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Pilih status kehadiran, pastikan GPS aktif dan berada di area industri.
           </p>
         </div>
 
-        {/* Touch-Friendly Status Toggles */}
+        {/* Ergonomic & Thumb-Friendly Status Toggles */}
         <div>
           <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
             Pilihan Status Kehadiran:
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
             {/* Hadir */}
             <button
               type="button"
               id="toggle-status-hadir"
               onClick={() => setSelectedStatus('Hadir')}
-              className={`min-h-[48px] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border-2 active:scale-98 ${
+              className={`min-h-[52px] sm:min-h-[56px] py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 transition-all border-2 active:scale-95 cursor-pointer select-none ${
                 selectedStatus === 'Hadir'
-                  ? 'bg-emerald-50/80 dark:bg-emerald-950/50 border-slate-900 dark:border-emerald-500 text-slate-900 dark:text-emerald-200 shadow-xs ring-1 ring-slate-900/10 dark:ring-emerald-500/20'
-                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-600 dark:border-emerald-400 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-500/25'
+                  : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
               }`}
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-200 dark:ring-emerald-900"></span>
+              <CheckCircle2 className={`w-4 h-4 shrink-0 ${selectedStatus === 'Hadir' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`} />
               <span>Hadir</span>
             </button>
 
@@ -924,13 +1434,13 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
               type="button"
               id="toggle-status-izin"
               onClick={() => setSelectedStatus('Izin')}
-              className={`min-h-[48px] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border-2 active:scale-98 ${
+              className={`min-h-[52px] sm:min-h-[56px] py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 transition-all border-2 active:scale-95 cursor-pointer select-none ${
                 selectedStatus === 'Izin'
-                  ? 'bg-sky-50/80 dark:bg-sky-950/50 border-slate-900 dark:border-sky-500 text-slate-900 dark:text-sky-200 shadow-xs ring-1 ring-slate-900/10 dark:ring-sky-500/20'
-                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                  ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-600 dark:border-sky-400 text-sky-950 dark:text-sky-100 shadow-sm ring-2 ring-sky-500/25'
+                  : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
               }`}
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-sky-200 dark:ring-sky-900"></span>
+              <FileText className={`w-4 h-4 shrink-0 ${selectedStatus === 'Izin' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-500'}`} />
               <span>Izin</span>
             </button>
 
@@ -939,13 +1449,13 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
               type="button"
               id="toggle-status-sakit"
               onClick={() => setSelectedStatus('Sakit')}
-              className={`min-h-[48px] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border-2 active:scale-98 ${
+              className={`min-h-[52px] sm:min-h-[56px] py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 transition-all border-2 active:scale-95 cursor-pointer select-none ${
                 selectedStatus === 'Sakit'
-                  ? 'bg-purple-50/80 dark:bg-purple-950/50 border-slate-900 dark:border-purple-500 text-slate-900 dark:text-purple-200 shadow-xs ring-1 ring-slate-900/10 dark:ring-purple-500/20'
-                  : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                  ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-600 dark:border-purple-400 text-purple-950 dark:text-purple-100 shadow-sm ring-2 ring-purple-500/25'
+                  : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
               }`}
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-500 ring-2 ring-purple-200 dark:ring-purple-900"></span>
+              <HeartPulse className={`w-4 h-4 shrink-0 ${selectedStatus === 'Sakit' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500'}`} />
               <span>Sakit</span>
             </button>
           </div>
@@ -965,7 +1475,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                   type="button"
                   onClick={getDeviceLocation}
                   disabled={gpsLoading}
-                  className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:text-sky-900 dark:hover:text-sky-100 flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1 rounded-md border border-sky-200 dark:border-slate-700 shadow-2xs"
+                  className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:text-sky-900 dark:hover:text-sky-100 flex items-center gap-1 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-sky-200 dark:border-slate-700 shadow-2xs active:scale-95 cursor-pointer"
                 >
                   <RefreshCw className={`w-3 h-3 ${gpsLoading ? 'animate-spin' : ''}`} />
                   <span>Baca GPS Riil</span>
@@ -973,11 +1483,11 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
               </div>
 
               {/* Metrics */}
-              <div className="grid grid-cols-3 gap-2 bg-white dark:bg-slate-950 rounded-lg p-2.5 border border-sky-100 dark:border-slate-800 text-center">
+              <div className="grid grid-cols-3 gap-2 bg-white dark:bg-slate-950 rounded-xl p-2.5 border border-sky-100 dark:border-slate-800 text-center">
                 <div>
-                  <span className="text-[10px] text-slate-400 block">Jarak ke DUDI</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">Jarak ke DUDI</span>
                   <strong
-                    className={`text-sm font-bold ${
+                    className={`text-xs sm:text-sm font-bold ${
                       isWithinRadius ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                     }`}
                   >
@@ -985,11 +1495,11 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                   </strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block">Batas Radius</span>
-                  <strong className="text-sm font-bold text-slate-700 dark:text-slate-200">{radiusLimit} m</strong>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">Batas Radius</span>
+                  <strong className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">{radiusLimit} m</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block">Status Valid</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">Status Valid</span>
                   <span
                     className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded-md ${
                       isWithinRadius
@@ -1003,10 +1513,10 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
               </div>
 
               {/* Simulator Radius for Instant Testing */}
-              <div className="bg-white/80 dark:bg-slate-900/80 rounded-lg p-2 border border-sky-100 dark:border-slate-800 text-xs flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300">
+              <div className="bg-white/80 dark:bg-slate-900/80 rounded-lg p-2 border border-sky-100 dark:border-slate-800 text-xs flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300 font-medium">
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Simulasi Uji Radius:</span>
+                  <span>Uji Simulasi Lokasi:</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -1015,10 +1525,10 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                       setUseSimulatedGPS(true);
                       setSimulatedDistanceOffset(25);
                     }}
-                    className={`px-2 py-1 text-[10px] font-bold rounded-md border ${
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-md border transition cursor-pointer active:scale-95 ${
                       useSimulatedGPS && simulatedDistanceOffset <= radiusLimit
                         ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
                     Di Kantor (25m)
@@ -1029,20 +1539,20 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                       setUseSimulatedGPS(true);
                       setSimulatedDistanceOffset(1250);
                     }}
-                    className={`px-2 py-1 text-[10px] font-bold rounded-md border ${
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-md border transition cursor-pointer active:scale-95 ${
                       useSimulatedGPS && simulatedDistanceOffset > radiusLimit
                         ? 'bg-rose-600 text-white border-rose-600'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
-                    Di Rumah (1.2km)
+                    Di Luar (1.2km)
                   </button>
                 </div>
               </div>
             </div>
 
             {/* Camera / Selfie Section */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               {/* Native smartphone camera capture */}
               <input
                 ref={nativeCameraInputRef}
@@ -1092,7 +1602,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-semibold text-[11px]">
                     <Zap className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Mode Kompresi Foto (Hemat Ruang):</span>
+                    <span>Mode Kompresi Foto:</span>
                   </div>
                   <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px]">
                     {(['eco', 'balanced', 'high'] as const).map((presetKey) => (
@@ -1103,14 +1613,14 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                           setCompressPreset(presetKey);
                           setSavedCompressionPreset(presetKey);
                         }}
-                        className={`px-2 py-1 rounded-md font-semibold transition ${
+                        className={`px-2 py-1 rounded-md font-semibold transition cursor-pointer ${
                           compressPreset === presetKey
                             ? 'bg-sky-600 text-white shadow-xs'
                             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                         }`}
                       >
                         {presetKey === 'eco'
-                          ? 'Super Hemat (~40KB)'
+                          ? 'Hemat (~40KB)'
                           : presetKey === 'balanced'
                           ? 'Seimbang (~60KB)'
                           : 'Kualitas (~100KB)'}
@@ -1122,21 +1632,22 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                 <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-0.5 border-t border-slate-200/60 dark:border-slate-700/60">
                   <span className="flex items-center gap-1">
                     <Cloud className="w-3 h-3 text-sky-500" />
-                    Tujuan Penyimpanan Foto:
+                    Tujuan Penyimpanan:
                   </span>
                   {getCachedAccessToken() ? (
                     <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Google Drive (OAuth Aktif)
+                      <CheckCircle2 className="w-3 h-3" /> Google Drive Cloud (OAuth)
                     </span>
                   ) : (
-                    <span className="text-slate-500 italic">
-                      TiDB Cloud / MySQL Lokal
+                    <span className="text-slate-600 dark:text-slate-400 font-medium">
+                      Firestore Cloud Storage
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="relative aspect-square max-w-[300px] mx-auto bg-slate-950 rounded-2xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-inner">
+              {/* Viewfinder Frame - Proportionate & Centered */}
+              <div className="relative aspect-square max-w-[270px] sm:max-w-[300px] mx-auto bg-slate-950 rounded-2xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-inner">
                 {/* Live Video */}
                 <video
                   ref={videoRef}
@@ -1167,6 +1678,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                       src={capturedPhoto}
                       alt="Selfie Preview"
                       className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
                     />
                     <div className="absolute top-2 right-2 bg-emerald-600/90 text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-xs backdrop-blur-xs">
                       <Check className="w-3 h-3" /> Terverifikasi
@@ -1186,14 +1698,14 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                 {/* Placeholder when idle */}
                 {!isCameraActive && !capturedPhoto && (
                   <div className="text-center p-4 space-y-2">
-                    <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-500 flex items-center justify-center mx-auto">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center mx-auto">
                       <Camera className="w-6 h-6" />
                     </div>
-                    <p className="text-xs font-semibold text-slate-200">
-                      Ambil Foto Selfie Seragam / ID PKL
+                    <p className="text-xs font-semibold text-slate-100">
+                      Ambil Foto Selfie Seragam PKL
                     </p>
                     <p className="text-[11px] text-slate-400 max-w-[200px] mx-auto">
-                      Gunakan live camera, kamera ponsel langsung, atau upload bukti kehadiran.
+                      Pilih tombol kamera di bawah untuk mengambil foto selfie.
                     </p>
                   </div>
                 )}
@@ -1201,7 +1713,7 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                 {/* Camera Live Top Toolbar Overlay */}
                 {isCameraActive && (
                   <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-20 pointer-events-auto">
-                    <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center gap-1 shadow-xs animate-pulse">
+                    <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center gap-1 shadow-xs animate-pulse">
                       <span className="w-1.5 h-1.5 rounded-full bg-white" /> LIVE
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -1245,124 +1757,99 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                       <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">{cameraError}</p>
                     </div>
                   </div>
-                  <div className="pt-1 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => nativeCameraInputRef.current?.click()}
-                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>📸 Buka Kamera HP Langsung</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1 cursor-pointer active:scale-95"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Pilih File Foto</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={generateFallbackSnapshot}
-                      className="px-3 py-1.5 bg-white dark:bg-slate-800 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-slate-700 text-xs font-semibold rounded-lg hover:bg-amber-100/60 dark:hover:bg-slate-700 transition cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500 inline mr-1" />
-                      Gunakan Foto Pengujian
-                    </button>
-                  </div>
                 </div>
               )}
 
-              {/* Camera Action Buttons */}
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                {!isCameraActive ? (
-                  <>
-                    <button
-                      type="button"
-                      id="btn-start-camera"
-                      onClick={() => startCamera('user')}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-900 dark:bg-sky-600 text-white hover:bg-slate-800 dark:hover:bg-sky-500 transition active:scale-95 shadow-xs cursor-pointer"
-                      title="Buka live webcam browser langsung"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>{capturedPhoto ? 'Kamera Live (Ulang)' : 'Buka Kamera (Live)'}</span>
-                    </button>
+              {/* Thumb-Friendly Camera Action Buttons - Mobile Ergonomic 2x2 Grid */}
+              {!isCameraActive ? (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  {/* Option 1: Live WebRTC Camera */}
+                  <button
+                    type="button"
+                    id="btn-start-camera"
+                    onClick={() => startCamera('user')}
+                    className="min-h-[48px] px-3 py-2 rounded-xl bg-slate-900 dark:bg-sky-600 text-white hover:bg-slate-800 dark:hover:bg-sky-500 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer"
+                    title="Buka live webcam browser langsung"
+                  >
+                    <Camera className="w-4 h-4 shrink-0" />
+                    <span>{capturedPhoto ? 'Kamera Ulang' : 'Kamera (Live)'}</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      id="btn-upload-camera-native"
-                      onClick={() => nativeCameraInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-sky-600/15 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 hover:bg-sky-600/25 border border-sky-500/30 transition active:scale-95 cursor-pointer"
-                      title="Buka aplikasi kamera bawaan HP secara langsung untuk selfie"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>Kamera HP (Selfie)</span>
-                    </button>
+                  {/* Option 2: Native Smartphone Camera (Direct Selfie Launch) */}
+                  <button
+                    type="button"
+                    id="btn-upload-camera-native"
+                    onClick={() => nativeCameraInputRef.current?.click()}
+                    className="min-h-[48px] px-3 py-2 rounded-xl bg-sky-50 dark:bg-sky-950/70 text-sky-900 dark:text-sky-200 border-2 border-sky-300 dark:border-sky-700 hover:bg-sky-100 dark:hover:bg-sky-900/80 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                    title="Buka aplikasi kamera bawaan ponsel untuk selfie langsung"
+                  >
+                    <Camera className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                    <span>Kamera HP</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      id="btn-upload-gallery"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition active:scale-95 cursor-pointer"
-                      title="Pilih foto bukti dari galeri atau berkas komputer"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Galeri / File</span>
-                    </button>
+                  {/* Option 3: Gallery / File Upload */}
+                  <button
+                    type="button"
+                    id="btn-upload-gallery"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="min-h-[46px] px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                    title="Pilih foto bukti dari galeri atau berkas komputer"
+                  >
+                    <Upload className="w-3.5 h-3.5 shrink-0" />
+                    <span>Galeri / File</span>
+                  </button>
 
-                    {!capturedPhoto && (
-                      <button
-                        type="button"
-                        onClick={generateFallbackSnapshot}
-                        className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
-                        title="Gunakan simulasi foto terverifikasi otomatis untuk pengujian cepat"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                        <span>Contoh Foto</span>
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      id="btn-take-photo"
-                      onClick={takeSnapshot}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition active:scale-95 shadow-md cursor-pointer"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Jepret Foto Selfie</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={stopCamera}
-                      className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Batal</span>
-                    </button>
-                  </>
-                )}
-              </div>
+                  {/* Option 4: Quick Test Snapshot */}
+                  <button
+                    type="button"
+                    onClick={generateFallbackSnapshot}
+                    className="min-h-[46px] px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/60 font-semibold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                    title="Gunakan simulasi foto terverifikasi otomatis untuk pengujian cepat"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span>Contoh Foto</span>
+                  </button>
+                </div>
+              ) : (
+                /* When Camera is LIVE - Shutter Bar in Thumb Reach */
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    id="btn-take-photo"
+                    onClick={takeSnapshot}
+                    className="flex-1 min-h-[50px] inline-flex items-center justify-center gap-2 px-6 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition active:scale-95 shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Jepret Foto Selfie</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopCamera}
+                    className="min-h-[50px] px-4 py-2 text-xs font-semibold rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Batal</span>
+                  </button>
+                </div>
+              )}
             </div>
           </>
         ) : (
           /* Izin / Sakit Section */
           <div className="space-y-3 pt-1">
-            <div className="p-3 bg-purple-50/60 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl space-y-1">
-              <span className="text-xs font-bold text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+            <div className="p-3 bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl space-y-1">
+              <span className="text-xs font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
                 <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 Ketentuan Pengajuan {selectedStatus}
               </span>
-              <p className="text-xs text-purple-700 dark:text-purple-300">
+              <p className="text-xs text-purple-800 dark:text-purple-300 leading-relaxed">
                 Pemberitahuan otomatis akan dikirimkan ke WhatsApp Orang Tua dan Guru Pembimbing
                 melalui Fonnte API Gateway.
               </p>
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-1">
+              <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-1.5">
                 Alasan / Keterangan {selectedStatus} <span className="text-rose-500">*</span>:
               </label>
               <textarea
@@ -1371,23 +1858,23 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
                 value={keterangan}
                 onChange={(e) => setKeterangan(e.target.value)}
                 placeholder={`Jelaskan alasan ${selectedStatus.toLowerCase()} secara rinci (misal: Sakit demam berobat ke Puskesmas, atau izin keperluan keluarga)...`}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-slate-900 dark:focus:ring-sky-500 focus:border-slate-900 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-slate-900 dark:focus:ring-sky-500 focus:border-slate-900 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
                 required
               />
             </div>
           </div>
         )}
 
-        {/* Submit Attendance Button */}
+        {/* Thumb-Friendly Submit Attendance Action Button */}
         <button
           type="button"
           id="btn-submit-presensi"
           disabled={isSubmitting || isCompressing}
           onClick={() => handleSubmit(false)}
-          className={`w-full min-h-[48px] py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md border ${
+          className={`w-full min-h-[54px] sm:min-h-[58px] py-3.5 px-4 rounded-2xl font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all shadow-md border ${
             isSubmitting || isCompressing
-              ? 'bg-slate-400 dark:bg-slate-700 text-slate-100 cursor-not-allowed border-transparent'
-              : 'bg-slate-900 dark:bg-sky-600 text-sky-400 dark:text-white hover:bg-slate-800 dark:hover:bg-sky-500 active:scale-98 shadow-md border-slate-800 dark:border-sky-700 cursor-pointer'
+              ? 'bg-slate-300 dark:bg-slate-800 text-slate-500 dark:text-slate-500 cursor-not-allowed border-transparent'
+              : 'bg-slate-900 hover:bg-slate-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white active:scale-98 border-slate-950 dark:border-emerald-700 cursor-pointer'
           }`}
         >
           {isSubmitting ? (
@@ -1398,110 +1885,442 @@ export const PresensiCerdas: React.FC<PresensiCerdasProps> = ({
           ) : isCompressing ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Mengompresi Foto...</span>
+              <span>Mengompresi Foto Selfie...</span>
             </>
           ) : (
             <>
               <Send className="w-4 h-4" />
-              <span>Kirim Presensi {selectedStatus} ({selectedShift?.nama_shift || 'Shift'})</span>
+              <span>Kirim Presensi {selectedStatus} ({selectedShift?.nama_shift || 'Shift Aktif'})</span>
             </>
           )}
         </button>
       </div>
 
-      {/* History Presensi Terbaru Siswa */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3 transition-colors">
-        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-          Riwayat Presensi Terbaru
-        </h4>
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {presensiList.slice(0, 4).map((p) => {
-            const isSelf = p.id_siswa === currentSiswa?.id_siswa;
-            const targetSiswa = siswaList.find((x) => x.id_siswa === p.id_siswa);
-            return (
-              <div key={p.id_presensi} className="py-2.5 flex items-center justify-between gap-3 text-xs">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{p.hari ? `${p.hari}, ` : ''}{p.tanggal}</span>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        p.status === 'Hadir'
-                          ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300'
-                          : p.status === 'Izin'
-                          ? 'bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300'
-                          : 'bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300'
-                      }`}
-                    >
-                      {p.status}
-                    </span>
-                    {p.nama_shift && (
-                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                        {p.nama_shift}
-                      </span>
-                    )}
-                    {p.status_ketepatan && (
-                      <span
-                        className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                          p.status_ketepatan === 'Tepat Waktu'
-                            ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                            : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                        }`}
-                      >
-                        {p.status_ketepatan}
-                      </span>
-                    )}
-                    {targetSiswa && onSelectSiswaDetail && (
-                      <button
-                        type="button"
-                        onClick={() => onSelectSiswaDetail(targetSiswa)}
-                        className="text-[10px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5 cursor-pointer"
-                        title="Lihat profil detail siswa"
-                      >
-                        <span>{isSelf ? '(Anda)' : targetSiswa.nama_lengkap}</span>
-                        <Eye className="w-2.5 h-2.5" />
-                      </button>
-                    )}
-                  </div>
+      {/* 3. MINI SCROLLABLE ATTENDANCE HISTORY WITH RICH SEARCH & MULTI-CRITERIA FILTERS */}
+      {(() => {
+        const countHadir = studentHistory.filter((p) => p.status === 'Hadir').length;
+        const countIzin = studentHistory.filter((p) => p.status === 'Izin').length;
+        const countSakit = studentHistory.filter((p) => p.status === 'Sakit').length;
+        const activeFiltersCount =
+          (historySearchQuery.trim() ? 1 : 0) +
+          (historyDatePreset !== 'all' ? 1 : 0) +
+          (historyStatusFilter !== 'all' ? 1 : 0) +
+          (historyKetepatanFilter !== 'all' ? 1 : 0) +
+          (historyJurnalFilter !== 'all' ? 1 : 0);
+
+        const resetAllFilters = () => {
+          setHistorySearchQuery('');
+          setHistoryDatePreset('all');
+          setHistoryCustomDate('');
+          setHistoryStatusFilter('all');
+          setHistoryKetepatanFilter('all');
+          setHistoryJurnalFilter('all');
+        };
+
+        return (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5 transition-colors">
+            {/* Header with Title & Stats Summary */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 flex items-center justify-center">
+                  <History className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                    Riwayat Presensi Siswa Terkini
+                  </h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Masuk: {p.jam_masuk} WIB | Pulang: {p.jam_pulang || '-'}
+                    Daftar absensi terbaru Anda dengan filter pencarian instan
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {p.foto_selfie && (
-                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 shadow-xs bg-slate-100 dark:bg-slate-800">
-                      <img
-                        src={p.foto_selfie}
-                        alt="Selfie"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+              </div>
+
+              {/* Quick Counter Badges */}
+              <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  Total: {studentHistory.length}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  Hadir: {countHadir}
+                </span>
+                {countIzin > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                    Izin: {countIzin}
+                  </span>
+                )}
+                {countSakit > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    Sakit: {countSakit}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Search Input Bar & Filter Toggle Button */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                  <input
+                    type="text"
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    placeholder="Cari tanggal, shift, status, atau catatan..."
+                    className="w-full pl-8.5 pr-8 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition"
+                  />
+                  {historySearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setHistorySearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded-md"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
+                    activeFiltersCount > 0
+                      ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300'
+                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Filter</span>
+                  {activeFiltersCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-sky-600 text-white text-[9px] flex items-center justify-center font-bold">
+                      {activeFiltersCount}
+                    </span>
+                  )}
+                  {isFilterExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              {/* Collapsible Advanced Filters Section */}
+              {isFilterExpanded && (
+                <div className="p-3 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3 text-xs">
+                  {/* Filter 1: Tanggal Presets */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> Rentang Tanggal
+                    </label>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(['all', 'today', '7days', 'month', 'custom'] as const).map((preset) => {
+                        const labels: Record<string, string> = {
+                          all: 'Semua',
+                          today: 'Hari Ini',
+                          '7days': '7 Hari Terakhir',
+                          month: 'Bulan Ini',
+                          custom: 'Pilih Tanggal',
+                        };
+                        const isActive = historyDatePreset === preset;
+                        return (
+                          <button
+                            type="button"
+                            key={preset}
+                            onClick={() => setHistoryDatePreset(preset)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border ${
+                              isActive
+                                ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            {labels[preset]}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {historyDatePreset === 'custom' && (
+                      <div className="pt-1.5 flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={historyCustomDate}
+                          onChange={(e) => setHistoryCustomDate(e.target.value)}
+                          className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-sky-500"
+                        />
+                        {historyCustomDate && (
+                          <button
+                            type="button"
+                            onClick={() => setHistoryCustomDate('')}
+                            className="text-[10px] text-rose-600 hover:underline"
+                          >
+                            Reset Tanggal
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Filter 2: Status Presensi */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Status Kehadiran
+                    </label>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(['all', 'Hadir', 'Izin', 'Sakit'] as const).map((status) => {
+                        const isActive = historyStatusFilter === status;
+                        return (
+                          <button
+                            type="button"
+                            key={status}
+                            onClick={() => setHistoryStatusFilter(status)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border ${
+                              isActive
+                                ? 'bg-slate-900 dark:bg-sky-600 text-white border-transparent'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            {status === 'all' ? 'Semua Status' : status}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Filter 3: Ketepatan & Status Jurnal */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Ketepatan Waktu
+                      </label>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {(['all', 'Tepat Waktu', 'Terlambat'] as const).map((k) => (
+                          <button
+                            type="button"
+                            key={k}
+                            onClick={() => setHistoryKetepatanFilter(k)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                              historyKetepatanFilter === k
+                                ? 'bg-slate-800 text-white dark:bg-slate-700 border-transparent'
+                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {k === 'all' ? 'Semua' : k}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <BookOpen className="w-3 h-3" /> Jurnal Kegiatan
+                      </label>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {([
+                          { id: 'all', label: 'Semua' },
+                          { id: 'with_journal', label: 'Ada Jurnal' },
+                          { id: 'without_journal', label: 'Belum Ada' },
+                        ] as const).map((j) => (
+                          <button
+                            type="button"
+                            key={j.id}
+                            onClick={() => setHistoryJurnalFilter(j.id)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                              historyJurnalFilter === j.id
+                                ? 'bg-sky-700 text-white dark:bg-sky-600 border-transparent'
+                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {j.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reset Filters CTA */}
+                  {activeFiltersCount > 0 && (
+                    <div className="pt-1 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-500">
+                        {activeFiltersCount} filter aktif diterapkan
+                      </span>
+                      <button
+                        type="button"
+                        onClick={resetAllFilters}
+                        className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reset Semua Filter</span>
+                      </button>
                     </div>
                   )}
-                  <div className="text-right">
-                    {p.drive_view_url ? (
-                      <a
-                        href={p.drive_view_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900 text-sky-700 dark:text-sky-300 text-[10px] font-semibold border border-sky-200 dark:border-sky-800 transition"
-                        title="Buka foto selfie asli di Google Drive"
-                      >
-                        <Cloud className="w-2.5 h-2.5 text-sky-500" />
-                        <span>Drive</span>
-                      </a>
-                    ) : p.koordinat_absen?.jarak_meter ? (
-                      <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
-                        {p.koordinat_absen.jarak_meter} m
-                      </span>
-                    ) : null}
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">WA Terkirim</span>
-                  </div>
                 </div>
+              )}
+            </div>
+
+            {/* Filter Result Counter */}
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-0.5">
+              <span>
+                Menampilkan <strong>{filteredStudentHistory.length}</strong> dari {studentHistory.length} catatan
+              </span>
+              {activeFiltersCount > 0 && (
+                <button
+                  type="button"
+                  onClick={resetAllFilters}
+                  className="text-sky-600 dark:text-sky-400 hover:underline text-[10px] font-semibold"
+                >
+                  Bersihkan Filter
+                </button>
+              )}
+            </div>
+
+            {/* Scrollable Container */}
+            {filteredStudentHistory.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 dark:text-slate-500 space-y-2 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                <Clock className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {studentHistory.length === 0
+                    ? 'Belum ada riwayat presensi tercatat.'
+                    : 'Tidak ada catatan presensi yang cocok dengan filter.'}
+                </p>
+                {studentHistory.length > 0 && activeFiltersCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetAllFilters}
+                    className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 rounded-lg border border-sky-200 dark:border-sky-800 hover:bg-sky-100 transition"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Filter</span>
+                  </button>
+                )}
               </div>
-            );
-          })}
-        </div>
-      </div>
+            ) : (
+              <div className="max-h-72 sm:max-h-84 overflow-y-auto space-y-2.5 pr-1.5 focus:outline-hidden">
+                {filteredStudentHistory.map((p) => {
+                  // Find connected journal for this student & date
+                  const journalForDate = jurnalList.find(
+                    (j) => j.id_siswa === currentSiswa?.id_siswa && j.tanggal === p.tanggal
+                  );
+
+                  return (
+                    <div
+                      key={p.id_presensi}
+                      className="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/90 dark:border-slate-750 hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col gap-2 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1 flex-1 min-w-0">
+                          {/* Date & Status Badges */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-900 dark:text-slate-100">
+                              {p.hari ? `${p.hari}, ` : ''}{p.tanggal}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                p.status === 'Hadir'
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                  : p.status === 'Izin'
+                                  ? 'bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
+                                  : 'bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                              }`}
+                            >
+                              {p.status}
+                            </span>
+                            {p.nama_shift && (
+                              <span className="px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-slate-200/80 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                                {p.nama_shift}
+                              </span>
+                            )}
+                            {p.status_ketepatan && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
+                                  p.status_ketepatan === 'Tepat Waktu'
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                    : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                }`}
+                              >
+                                {p.status_ketepatan}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Times & Details */}
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                            Masuk: <strong className="text-slate-800 dark:text-slate-200 font-mono">{p.jam_masuk} WIB</strong> | Pulang:{' '}
+                            <strong className="text-slate-800 dark:text-slate-200 font-mono">{p.jam_pulang ? `${p.jam_pulang} WIB` : 'Belum Pulang'}</strong>
+                          </p>
+
+                          {/* Keterangan if any */}
+                          {p.keterangan && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-1">
+                              &ldquo;{p.keterangan}&rdquo;
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Photo Thumbnail & Links */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {p.foto_selfie && (
+                            <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 shadow-xs bg-slate-100 dark:bg-slate-800">
+                              <img
+                                src={p.foto_selfie}
+                                alt="Selfie"
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                          )}
+                          <div className="text-right space-y-0.5">
+                            {p.drive_view_url ? (
+                              <a
+                                href={p.drive_view_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900 text-sky-700 dark:text-sky-300 text-[10px] font-semibold border border-sky-200 dark:border-sky-800 transition"
+                                title="Buka foto selfie asli di Google Drive"
+                              >
+                                <Cloud className="w-2.5 h-2.5 text-sky-500" />
+                                <span>Drive</span>
+                              </a>
+                            ) : p.koordinat_absen?.jarak_meter ? (
+                              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 block">
+                                {p.koordinat_absen.jarak_meter} m
+                              </span>
+                            ) : null}
+                            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold block">
+                              ✓ WA Terkirim
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Journal Linked Status Footer for this attendance record */}
+                      <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 min-w-0">
+                          <BookOpen className="w-3 h-3 text-slate-400 shrink-0" />
+                          {journalForDate ? (
+                            <span className="truncate">
+                              Jurnal: <strong className="text-emerald-700 dark:text-emerald-400">{journalForDate.deskripsi_kegiatan}</strong>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500 italic">
+                              Belum mengisi jurnal harian
+                            </span>
+                          )}
+                        </div>
+
+                        {onNavigateTab && !journalForDate && p.status === 'Hadir' && (
+                          <button
+                            type="button"
+                            onClick={() => onNavigateTab('jurnal')}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:underline"
+                          >
+                            <span>+ Tulis Jurnal</span>
+                            <ChevronRight className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };

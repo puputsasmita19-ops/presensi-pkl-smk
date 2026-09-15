@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MapPin,
@@ -10,6 +10,8 @@ import {
   Clock,
   Volume2,
   VolumeX,
+  Bell,
+  BellOff,
   X,
   Sparkles,
   ChevronRight,
@@ -25,6 +27,11 @@ import {
   usePrayerTimes,
   savePrayerLocation,
   reverseGeocodeLocation,
+  PrayerReminderConfig,
+  getSavedPrayerReminderConfig,
+  savePrayerReminderConfig,
+  triggerTestPrayerAlert,
+  PRAYER_REMINDER_CONFIG_EVENT,
 } from '../utils/prayerTimesService';
 
 interface JadwalSholatModalProps {
@@ -47,6 +54,40 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({ isOpen, on
   const [locationError, setLocationError] = useState<string | null>(null);
   const [searchCity, setSearchCity] = useState<string>('');
   const [isCityDropdownOpen, setIsCityDropdownOpen] = useState<boolean>(false);
+
+  // Prayer reminder preferences
+  const [reminderConfig, setReminderConfig] = useState<PrayerReminderConfig>(() =>
+    getSavedPrayerReminderConfig()
+  );
+
+  useEffect(() => {
+    const handleConfigChange = (e: Event) => {
+      const customEvent = e as CustomEvent<PrayerReminderConfig>;
+      if (customEvent.detail) {
+        setReminderConfig(customEvent.detail);
+      } else {
+        setReminderConfig(getSavedPrayerReminderConfig());
+      }
+    };
+    window.addEventListener(PRAYER_REMINDER_CONFIG_EVENT, handleConfigChange);
+    return () => {
+      window.removeEventListener(PRAYER_REMINDER_CONFIG_EVENT, handleConfigChange);
+    };
+  }, []);
+
+  const handleToggleReminder = () => {
+    const updated = savePrayerReminderConfig({ enabled: !reminderConfig.enabled });
+    setReminderConfig(updated);
+  };
+
+  const handleToggleSound = () => {
+    const updated = savePrayerReminderConfig({ soundEnabled: !reminderConfig.soundEnabled });
+    setReminderConfig(updated);
+  };
+
+  const handleTestReminder = () => {
+    triggerTestPrayerAlert(countdown.name, countdown.time);
+  };
 
   // Detect GPS location with instant reactive feedback
   const handleDetectGPS = () => {
@@ -394,6 +435,139 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({ isOpen, on
                     <div className="text-[9px] text-slate-500">{m.note}</div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* PENGATURAN NOTIFIKASI & POP-UP PENGINGAT WAKTU SHOLAT */}
+            <div
+              id="pengaturan-pengingat-sholat-card"
+              className="p-4 rounded-xl bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 border border-emerald-500/30 space-y-3 shadow-inner"
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                    <Bell className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                      <span>Pengingat & Pop-up Waktu Sholat</span>
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/15 px-2 py-0.2 rounded-full border border-emerald-500/30">
+                        Semua Role & Login
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Notifikasi visual dan nada pengingat saat adzan berkumandang
+                    </p>
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <span
+                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                    reminderConfig.enabled
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                  }`}
+                >
+                  {reminderConfig.enabled ? 'Fitur Aktif' : 'Fitur Nonaktif'}
+                </span>
+              </div>
+
+              {/* Toggles Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                {/* Master Pop-up Toggle */}
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {reminderConfig.enabled ? (
+                      <Bell className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <BellOff className="w-4 h-4 text-slate-500 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-white">
+                        Pop-up Pengingat
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {reminderConfig.enabled ? 'Aktif di semua halaman' : 'Dimatikan'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="btn-toggle-reminder-master"
+                    onClick={handleToggleReminder}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      reminderConfig.enabled ? 'bg-emerald-600' : 'bg-slate-700'
+                    }`}
+                    role="switch"
+                    aria-checked={reminderConfig.enabled}
+                    title="Aktifkan atau Matikan Pengingat Pop-up"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        reminderConfig.enabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Sound Chime Toggle */}
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {reminderConfig.soundEnabled ? (
+                      <Volume2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <VolumeX className="w-4 h-4 text-slate-500 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-white">
+                        Suara Nada Melodi
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {reminderConfig.soundEnabled ? 'Melodi sholat aktif' : 'Mode senyap'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="btn-toggle-reminder-sound"
+                    onClick={handleToggleSound}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      reminderConfig.soundEnabled ? 'bg-emerald-600' : 'bg-slate-700'
+                    }`}
+                    role="switch"
+                    aria-checked={reminderConfig.soundEnabled}
+                    title="Aktifkan atau Matikan Suara Nada Pengingat"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        reminderConfig.soundEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Test Button Row */}
+              <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-[11px] text-slate-400">
+                  Uji coba bagaimana tampilan pop-up dan suara pengingat saat waktu tiba:
+                </p>
+
+                <button
+                  type="button"
+                  id="btn-uji-coba-pengingat-sholat"
+                  onClick={handleTestReminder}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-700/80 hover:bg-emerald-600 text-white text-xs font-semibold border border-emerald-500/40 transition cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95 ml-auto"
+                  title="Klik untuk membuka simulasi pop-up pengingat sholat sekarang"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Uji Coba Pengingat (Test Pop-up)</span>
+                </button>
               </div>
             </div>
 

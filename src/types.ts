@@ -168,6 +168,7 @@ export interface FonnteConfig {
   senderPhone: string;
   autoNotifyParentOnAbsence: boolean;
   autoNotifyOnCheckIn: boolean;
+  autoNotifyDudiOnNewJournal?: boolean;
 }
 
 export type KategoriAktivitas =
@@ -191,5 +192,29 @@ export interface LogAktivitas {
   role: Role;
   status: StatusAktivitas;
   ip_device?: string;
+}
+
+export type PaperSize = 'A4' | 'F4';
+
+export interface KopSuratConfig {
+  instansiInduk: string;
+  namaSekolah: string;
+  subJudul?: string;
+  alamat: string;
+  kontak: string;
+  nomorSurat: string;
+  logoKiri?: string; // Data URL Base64 or image URL
+  logoKanan?: string; // Data URL Base64 or image URL
+  showLogoKiri: boolean;
+  showLogoKanan: boolean;
+  tampilkanGarisGanda: boolean;
+  namaKepalaSekolah: string;
+  nipKepalaSekolah: string;
+  namaPembimbingDudi: string;
+  nipPembimbingDudi?: string; // NIP, NIK, ID Pegawai, atau kosong jika DUDI tanpa NIP
+  kotaSurat: string;
+  // Legacy compatibility fields (optional)
+  namaKoordinatorHubin?: string;
+  nipKoordinatorHubin?: string;
 }
 

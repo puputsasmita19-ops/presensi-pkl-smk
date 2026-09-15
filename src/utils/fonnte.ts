@@ -1,13 +1,42 @@
-import { Presensi, Siswa, DUDI } from '../types';
+import { Presensi, Siswa, DUDI, JurnalHarian } from '../types';
 
 export interface WhatsAppNotificationLog {
   id: string;
   timestamp: string;
   targetPhone: string;
   targetName: string;
-  role: 'Orang Tua' | 'Siswa' | 'Guru Pembimbing';
+  role: 'Orang Tua' | 'Siswa' | 'Guru Pembimbing' | 'Pembimbing DUDI' | 'DUDI';
   message: string;
   status: 'Terkirim' | 'Gagal' | 'Simulasi';
+}
+
+/**
+ * Format WhatsApp message for new student journal submission awaiting DUDI review
+ */
+export function formatWhatsAppJurnalNotification(
+  jurnal: JurnalHarian,
+  siswa: Siswa,
+  dudi: DUDI
+): string {
+  const pembimbingGreeting = dudi.nama_pembimbing
+    ? `Bpk/Ibu *${dudi.nama_pembimbing}*`
+    : `Bapak/Ibu Pembimbing`;
+
+  return (
+    `*PEMBERITAHUAN JURNAL SISWA MAGANG PKL*\n\n` +
+    `Yth. ${pembimbingGreeting}\n` +
+    `Mitra Industri: *${dudi.nama_instansi}*\n\n` +
+    `Menginformasikan bahwa siswa magang Anda baru saja mengunggah laporan logbook kegiatan harian:\n\n` +
+    `👤 *Nama Siswa:* ${siswa.nama_lengkap}\n` +
+    `🆔 *NIS / Kelas:* ${siswa.nis} (${siswa.kelas} - ${siswa.jurusan})\n` +
+    `📅 *Tanggal Kegiatan:* ${jurnal.tanggal}\n` +
+    `📝 *Deskripsi Pekerjaan:*\n"${jurnal.deskripsi_kegiatan}"\n` +
+    (jurnal.kendala && jurnal.kendala !== '-' ? `⚠️ *Kendala Teknis:* ${jurnal.kendala}\n` : '') +
+    (jurnal.solusi && jurnal.solusi !== '-' ? `💡 *Solusi / Tindakan:* ${jurnal.solusi}\n` : '') +
+    `\n⏳ *Status:* Menunggu Validasi & Masukan Pembimbing DUDI\n\n` +
+    `Mohon kesediaannya untuk login ke Portal Presensi PKL SMK dan memberikan validasi serta evaluasi pada menu *Jurnal Kegiatan*.\n\n` +
+    `_Pesan otomatis dikirim oleh Sistem Informasi PKL SMK via Fonnte WA Gateway._`
+  );
 }
 
 /**

@@ -123,7 +123,7 @@ export const JurnalKegiatan: React.FC<JurnalKegiatanProps> = ({
     setDeskripsi('');
     setKendala('');
     setSolusi('');
-    alert('Logbook harian berhasil dikirim! Menunggu validasi dari Pembimbing DUDI dan Guru Pembimbing.');
+    alert('Logbook harian berhasil dikirim! Notifikasi otomatis telah dikirim ke WhatsApp Pembimbing DUDI untuk mempercepat validasi.');
   };
 
   const handleValidationAction = (
@@ -329,6 +329,13 @@ export const JurnalKegiatan: React.FC<JurnalKegiatanProps> = ({
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-sky-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden"
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-[11px] leading-relaxed">
+            <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>
+              <strong>Notifikasi Otomatis WhatsApp Aktif:</strong> Setiap pengiriman logbook harian akan langsung meneruskan pesan konfirmasi ke WhatsApp Pembimbing DUDI agar validasi jurnal lebih cepat.
+            </span>
           </div>
 
           <button

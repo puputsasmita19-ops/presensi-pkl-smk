@@ -633,3 +633,90 @@ export function usePrayerTimes() {
     shortLocation,
   };
 }
+
+export interface PrayerReminderConfig {
+  enabled: boolean; // Master On / Off switch
+  soundEnabled: boolean; // Audio chime On / Off switch
+  popupEnabled: boolean; // Modal Pop-up On / Off switch
+  notifySubuh: boolean;
+  notifyDzuhur: boolean;
+  notifyAshar: boolean;
+  notifyMaghrib: boolean;
+  notifyIsya: boolean;
+  notifyImsak: boolean;
+}
+
+export interface PrayerAlertPayload {
+  prayerName: string;
+  prayerTime: string;
+  isTest?: boolean;
+  locationName?: string;
+  hijriDate?: string;
+}
+
+export const PRAYER_REMINDER_CONFIG_EVENT = 'pkl_prayer_reminder_config_update';
+export const PRAYER_ALERT_EVENT = 'pkl_prayer_alert_trigger';
+export const STORAGE_PRAYER_REMINDER_CONFIG = 'pkl_prayer_reminder_config';
+export const STORAGE_PRAYER_LAST_ALERT = 'pkl_prayer_last_alert_key';
+
+export const DEFAULT_PRAYER_REMINDER_CONFIG: PrayerReminderConfig = {
+  enabled: true,
+  soundEnabled: true,
+  popupEnabled: true,
+  notifySubuh: true,
+  notifyDzuhur: true,
+  notifyAshar: true,
+  notifyMaghrib: true,
+  notifyIsya: true,
+  notifyImsak: false,
+};
+
+export function getSavedPrayerReminderConfig(): PrayerReminderConfig {
+  if (typeof window === 'undefined') {
+    return DEFAULT_PRAYER_REMINDER_CONFIG;
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_PRAYER_REMINDER_CONFIG);
+    if (!raw) return DEFAULT_PRAYER_REMINDER_CONFIG;
+    const parsed = JSON.parse(raw);
+    return {
+      enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
+      soundEnabled: parsed.soundEnabled !== undefined ? Boolean(parsed.soundEnabled) : true,
+      popupEnabled: parsed.popupEnabled !== undefined ? Boolean(parsed.popupEnabled) : true,
+      notifySubuh: parsed.notifySubuh !== undefined ? Boolean(parsed.notifySubuh) : true,
+      notifyDzuhur: parsed.notifyDzuhur !== undefined ? Boolean(parsed.notifyDzuhur) : true,
+      notifyAshar: parsed.notifyAshar !== undefined ? Boolean(parsed.notifyAshar) : true,
+      notifyMaghrib: parsed.notifyMaghrib !== undefined ? Boolean(parsed.notifyMaghrib) : true,
+      notifyIsya: parsed.notifyIsya !== undefined ? Boolean(parsed.notifyIsya) : true,
+      notifyImsak: parsed.notifyImsak !== undefined ? Boolean(parsed.notifyImsak) : false,
+    };
+  } catch {
+    return DEFAULT_PRAYER_REMINDER_CONFIG;
+  }
+}
+
+export function savePrayerReminderConfig(config: Partial<PrayerReminderConfig>): PrayerReminderConfig {
+  const current = getSavedPrayerReminderConfig();
+  const updated: PrayerReminderConfig = { ...current, ...config };
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_PRAYER_REMINDER_CONFIG, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent(PRAYER_REMINDER_CONFIG_EVENT, { detail: updated }));
+    } catch {}
+  }
+  return updated;
+}
+
+export function triggerPrayerAlert(payload: PrayerAlertPayload): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(PRAYER_ALERT_EVENT, { detail: payload }));
+  }
+}
+
+export function triggerTestPrayerAlert(prayerName = 'Dzuhur', prayerTime = '12:05'): void {
+  triggerPrayerAlert({
+    prayerName,
+    prayerTime,
+    isTest: true,
+  });
+}

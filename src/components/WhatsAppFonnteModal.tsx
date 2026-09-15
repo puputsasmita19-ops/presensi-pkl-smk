@@ -29,11 +29,14 @@ export const WhatsAppFonnteModal: React.FC<WhatsAppFonnteModalProps> = ({
   const [senderPhone, setSenderPhone] = useState(config.senderPhone);
   const [autoNotifyParent, setAutoNotifyParent] = useState(config.autoNotifyParentOnAbsence);
   const [autoNotifyCheckIn, setAutoNotifyCheckIn] = useState(config.autoNotifyOnCheckIn);
+  const [autoNotifyDudiJournal, setAutoNotifyDudiJournal] = useState(
+    config.autoNotifyDudiOnNewJournal !== false
+  );
 
   // Test send state
-  const [testPhone, setTestPhone] = useState('081234567890');
+  const [testPhone, setTestPhone] = useState('081399887766');
   const [testMessage, setTestMessage] = useState(
-    '*UJI COBA GATEWAY WA FONNTE*\n\nSistem Presensi PKL SMK telah terhubung dengan baik ke WhatsApp API.'
+    '*UJI COBA NOTIFIKASI JURNAL KE PEMBIMBING DUDI*\n\nSiswa magang Reza Pratama baru saja mengunggah laporan logbook harian baru dan menunggu validasi.'
   );
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ success: boolean; msg: string } | null>(null);
@@ -46,6 +49,7 @@ export const WhatsAppFonnteModal: React.FC<WhatsAppFonnteModalProps> = ({
       senderPhone,
       autoNotifyParentOnAbsence: autoNotifyParent,
       autoNotifyOnCheckIn: autoNotifyCheckIn,
+      autoNotifyDudiOnNewJournal: autoNotifyDudiJournal,
     });
     alert('Konfigurasi integrasi Fonnte WhatsApp berhasil disimpan!');
     onClose();
@@ -138,6 +142,18 @@ export const WhatsAppFonnteModal: React.FC<WhatsAppFonnteModalProps> = ({
                 />
                 <span className="text-slate-700 dark:text-slate-300 font-medium">
                   Kirim konfirmasi WhatsApp ke Siswa saat berhasil Absen Masuk
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoNotifyDudiJournal}
+                  onChange={(e) => setAutoNotifyDudiJournal(e.target.checked)}
+                  className="rounded border-slate-300 dark:border-slate-700 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-slate-700 dark:text-slate-300 font-medium text-emerald-700 dark:text-emerald-400 font-semibold">
+                  Kirim notifikasi otomatis ke Pembimbing DUDI saat Siswa Mengisi Jurnal Baru (Menunggu Validasi)
                 </span>
               </label>
             </div>

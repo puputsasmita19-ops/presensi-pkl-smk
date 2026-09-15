@@ -21,7 +21,25 @@ import {
   ChevronRight,
   RefreshCw,
   MapPin,
+  Sparkles,
+  Layers,
+  LineChart as LineChartIcon,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend as RechartsLegend,
+  ReferenceLine,
+} from 'recharts';
 import { User, Siswa, DUDI, GuruPembimbing, Presensi, JurnalHarian, KunjunganGuru } from '../types';
 
 interface StatistikDataAdminProps {
@@ -52,6 +70,154 @@ export const StatistikDataAdmin: React.FC<StatistikDataAdminProps> = ({
   const [selectedDudiFilter, setSelectedDudiFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  // Chart configuration states for Recharts 7-Day Trend
+  const [chartViewMode, setChartViewMode] = useState<'stacked_bar' | 'area_trend' | 'punctuality_bar'>('stacked_bar');
+  const [chartDudiFilter, setChartDudiFilter] = useState<string>('ALL');
+
+  // 7-Day Attendance Trend Data calculation for Recharts
+  const weeklyTrendData = useMemo(() => {
+    // Determine reference date: use latest recorded date in presensiList or current system date
+    let refDate = new Date();
+    const sortedDates = presensiList
+      .map((p) => p.tanggal)
+      .filter(Boolean)
+      .sort();
+
+    if (sortedDates.length > 0) {
+      const latestDateStr = sortedDates[sortedDates.length - 1];
+      const parsed = new Date(latestDateStr);
+      if (!isNaN(parsed.getTime())) {
+        refDate = parsed;
+      }
+    }
+
+    const daysOfWeekIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const monthsIndo = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+    const days: {
+      tanggal: string;
+      hari: string;
+      label: string;
+      shortLabel: string;
+      hadirTepat: number;
+      hadirTerlambat: number;
+      totalHadir: number;
+      izin: number;
+      sakit: number;
+      alpa: number;
+      totalPresensi: number;
+      persentaseKehadiran: number;
+      rasioTepatWaktu: number;
+      targetBenchmark: number;
+    }[] = [];
+
+    // Generate consecutive 7 days window ending at refDate
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(refDate);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayName = daysOfWeekIndo[d.getDay()];
+      const shortLabel = `${dayName.substring(0, 3)}, ${d.getDate()} ${monthsIndo[d.getMonth()]}`;
+      const fullLabel = `${dayName}, ${d.getDate()} ${monthsIndo[d.getMonth()]} ${d.getFullYear()}`;
+
+      // Filter presensi on this day with optional DUDI filter
+      const dayRecords = presensiList.filter((p) => {
+        if (p.tanggal !== dateStr) return false;
+        if (chartDudiFilter !== 'ALL') {
+          const siswa = siswaList.find((s) => s.id_siswa === p.id_siswa);
+          return siswa && siswa.id_dudi === chartDudiFilter;
+        }
+        return true;
+      });
+
+      const hadirTepat = dayRecords.filter(
+        (p) => p.status === 'Hadir' && p.status_ketepatan === 'Tepat Waktu'
+      ).length;
+      const hadirTerlambat = dayRecords.filter(
+        (p) => p.status === 'Hadir' && p.status_ketepatan === 'Terlambat'
+      ).length;
+      const totalHadir = hadirTepat + hadirTerlambat;
+      const izin = dayRecords.filter((p) => p.status === 'Izin').length;
+      const sakit = dayRecords.filter((p) => p.status === 'Sakit').length;
+      const alpa = dayRecords.filter((p) => p.status === 'Alpa').length;
+      const totalPresensi = dayRecords.length;
+
+      const relevantStudentsCount =
+        chartDudiFilter === 'ALL'
+          ? siswaList.length
+          : siswaList.filter((s) => s.id_dudi === chartDudiFilter).length;
+
+      const persentaseKehadiran =
+        totalPresensi > 0
+          ? Math.round((totalHadir / totalPresensi) * 100)
+          : relevantStudentsCount > 0
+          ? Math.min(100, Math.round((totalHadir / relevantStudentsCount) * 100))
+          : 0;
+
+      const rasioTepatWaktu =
+        totalHadir > 0 ? Math.round((hadirTepat / totalHadir) * 100) : 100;
+
+      days.push({
+        tanggal: dateStr,
+        hari: dayName,
+        label: fullLabel,
+        shortLabel,
+        hadirTepat,
+        hadirTerlambat,
+        totalHadir,
+        izin,
+        sakit,
+        alpa,
+        totalPresensi,
+        persentaseKehadiran,
+        rasioTepatWaktu,
+        targetBenchmark: 85,
+      });
+    }
+
+    return days;
+  }, [presensiList, siswaList, chartDudiFilter]);
+
+  // Aggregate weekly trend summary
+  const weeklySummaryStats = useMemo(() => {
+    if (weeklyTrendData.length === 0) {
+      return {
+        avgRate: 0,
+        totalHadir: 0,
+        totalTepat: 0,
+        totalTelat: 0,
+        totalIzinSakit: 0,
+        bestDay: null as (typeof weeklyTrendData)[0] | null,
+      };
+    }
+
+    const totalDaysWithData = weeklyTrendData.filter((d) => d.totalPresensi > 0).length || 1;
+    const sumRate = weeklyTrendData.reduce((acc, d) => acc + d.persentaseKehadiran, 0);
+    const avgRate = Math.round(sumRate / weeklyTrendData.length);
+
+    const totalHadir = weeklyTrendData.reduce((acc, d) => acc + d.totalHadir, 0);
+    const totalTepat = weeklyTrendData.reduce((acc, d) => acc + d.hadirTepat, 0);
+    const totalTelat = weeklyTrendData.reduce((acc, d) => acc + d.hadirTerlambat, 0);
+    const totalIzinSakit = weeklyTrendData.reduce((acc, d) => acc + d.izin + d.sakit, 0);
+
+    // Find best day with highest percentage or total attendance
+    let bestDay = weeklyTrendData[0];
+    weeklyTrendData.forEach((d) => {
+      if (d.persentaseKehadiran > (bestDay?.persentaseKehadiran || 0) || (d.totalHadir > (bestDay?.totalHadir || 0) && d.persentaseKehadiran >= 85)) {
+        bestDay = d;
+      }
+    });
+
+    return {
+      avgRate,
+      totalHadir,
+      totalTepat,
+      totalTelat,
+      totalIzinSakit,
+      bestDay,
+    };
+  }, [weeklyTrendData]);
 
   // Overall Attendance Metrics across all students
   const overallMetrics = useMemo(() => {
@@ -338,7 +504,385 @@ export const StatistikDataAdmin: React.FC<StatistikDataAdminProps> = ({
         </div>
       </div>
 
-      {/* 3. Progress Bar Komposisi Kedisiplinan Keseluruhan */}
+      {/* 3. VISUAL CHART RECHARTS: TREN KEHADIRAN SISWA 7 HARI TERAKHIR */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 transition-colors">
+        {/* Header & Chart Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3.5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                <BarChart3 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <span>Tren Kehadiran Siswa 7 Hari Terakhir</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                    Visual Recharts
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Grafik analitik kehadiran harian, komposisi status, dan perbandingan dengan target sekolah (85%)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Controls: Mode Switch & DUDI Filter */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* DUDI Filter */}
+            <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1 text-xs">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={chartDudiFilter}
+                onChange={(e) => setChartDudiFilter(e.target.value)}
+                className="bg-transparent text-xs text-slate-800 dark:text-slate-200 focus:outline-hidden cursor-pointer"
+              >
+                <option value="ALL" className="bg-white dark:bg-slate-900">
+                  Semua DUDI ({siswaList.length} Siswa)
+                </option>
+                {dudiList.map((d) => (
+                  <option key={d.id_dudi} value={d.id_dudi} className="bg-white dark:bg-slate-900">
+                    {d.nama_instansi}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* View Mode Toggle Buttons */}
+            <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+              <button
+                type="button"
+                onClick={() => setChartViewMode('stacked_bar')}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  chartViewMode === 'stacked_bar'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Tampilkan grafik batang komposisi seluruh status"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Komposisi</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setChartViewMode('area_trend')}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  chartViewMode === 'area_trend'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Tampilkan kurva tren tingkat kehadiran (%) vs Target 85%"
+              >
+                <LineChartIcon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Tren %</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setChartViewMode('punctuality_bar')}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  chartViewMode === 'punctuality_bar'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Bandingkan rasio tepat waktu vs terlambat"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Ketepatan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 7-Day Performance Quick Summary Chips */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Rata-Rata 7 Hari
+            </span>
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <span className="text-lg font-black text-slate-900 dark:text-white">
+                {weeklySummaryStats.avgRate}%
+              </span>
+              <span className={`text-[10px] font-bold ${weeklySummaryStats.avgRate >= 85 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {weeklySummaryStats.avgRate >= 85 ? '✓ Di Atas Target' : '⚠ Di Bawah Target'}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Hari Terdisiplin
+            </span>
+            <div className="mt-1 min-w-0 truncate">
+              <span className="text-sm font-bold text-slate-900 dark:text-white block truncate">
+                {weeklySummaryStats.bestDay?.shortLabel || '-'}
+              </span>
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                {weeklySummaryStats.bestDay?.persentaseKehadiran}% ({weeklySummaryStats.bestDay?.totalHadir} Hadir)
+              </span>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Tepat Waktu (7 Hari)
+            </span>
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                {weeklySummaryStats.totalTepat}
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                dari {weeklySummaryStats.totalHadir} presensi hadir
+              </span>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Izin, Sakit & Telat
+            </span>
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <span className="text-lg font-black text-amber-600 dark:text-amber-400">
+                {weeklySummaryStats.totalTelat}
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                telat, {weeklySummaryStats.totalIzinSakit} izin/sakit
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Recharts Canvas Section */}
+        <div className="w-full h-72 sm:h-80 pt-2 select-none">
+          <ResponsiveContainer width="100%" height="100%">
+            {chartViewMode === 'stacked_bar' ? (
+              <BarChart data={weeklyTrendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.2} vertical={false} />
+                <XAxis
+                  dataKey="shortLabel"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                />
+                <RechartsTooltip
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload as (typeof weeklyTrendData)[0];
+                      return (
+                        <div className="bg-slate-900/95 text-white p-3 rounded-xl border border-slate-700 shadow-xl text-xs space-y-2 backdrop-blur-sm min-w-[200px]">
+                          <div className="border-b border-slate-800 pb-1.5">
+                            <span className="font-bold text-sky-400 block">{data.label}</span>
+                            <span className="text-[10px] text-slate-400">
+                              Tingkat Kehadiran: <strong className="text-white">{data.persentaseKehadiran}%</strong>
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-[11px]">
+                            <div className="flex items-center justify-between gap-3 text-emerald-400">
+                              <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                                Hadir Tepat Waktu:
+                              </span>
+                              <strong>{data.hadirTepat} siswa</strong>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-amber-400">
+                              <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                                Hadir Terlambat:
+                              </span>
+                              <strong>{data.hadirTerlambat} siswa</strong>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-sky-300">
+                              <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />
+                                Izin:
+                              </span>
+                              <strong>{data.izin} siswa</strong>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-purple-300">
+                              <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" />
+                                Sakit:
+                              </span>
+                              <strong>{data.sakit} siswa</strong>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-rose-400">
+                              <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+                                Alpha:
+                              </span>
+                              <strong>{data.alpa} siswa</strong>
+                            </div>
+                          </div>
+                          <div className="border-t border-slate-800 pt-1 text-[10px] text-slate-400 flex justify-between">
+                            <span>Total Presensi Tercatat:</span>
+                            <strong className="text-white">{data.totalPresensi}</strong>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <RechartsLegend
+                  wrapperStyle={{ paddingTop: 10, fontSize: 11 }}
+                  formatter={(value) => {
+                    const labels: Record<string, string> = {
+                      hadirTepat: 'Hadir Tepat Waktu',
+                      hadirTerlambat: 'Hadir Terlambat',
+                      izin: 'Izin',
+                      sakit: 'Sakit',
+                      alpa: 'Alpha',
+                    };
+                    return <span className="text-slate-700 dark:text-slate-300 font-medium">{labels[value] || value}</span>;
+                  }}
+                />
+                <Bar dataKey="hadirTepat" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="hadirTerlambat" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="izin" stackId="a" fill="#38bdf8" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="sakit" stackId="a" fill="#c084fc" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="alpa" stackId="a" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            ) : chartViewMode === 'area_trend' ? (
+              <AreaChart data={weeklyTrendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="presenceGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0284c7" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#0284c7" stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.2} vertical={false} />
+                <XAxis
+                  dataKey="shortLabel"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  unit="%"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                />
+                <ReferenceLine
+                  y={85}
+                  stroke="#ef4444"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: 'Target 85%',
+                    position: 'right',
+                    fill: '#ef4444',
+                    fontSize: 10,
+                    fontWeight: 'bold',
+                  }}
+                />
+                <RechartsTooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload as (typeof weeklyTrendData)[0];
+                      return (
+                        <div className="bg-slate-900/95 text-white p-3 rounded-xl border border-slate-700 shadow-xl text-xs space-y-1.5 backdrop-blur-sm min-w-[190px]">
+                          <span className="font-bold text-sky-400 block border-b border-slate-800 pb-1">
+                            {data.label}
+                          </span>
+                          <div className="flex items-center justify-between gap-3 text-sky-300">
+                            <span>Tingkat Kehadiran:</span>
+                            <strong className="text-sm text-white font-mono">{data.persentaseKehadiran}%</strong>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 text-emerald-400 text-[11px]">
+                            <span>Rasio Tepat Waktu:</span>
+                            <strong>{data.rasioTepatWaktu}%</strong>
+                          </div>
+                          <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800">
+                            {data.totalHadir} hadir ({data.hadirTepat} tepat, {data.hadirTerlambat} telat)
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="persentaseKehadiran"
+                  name="Tingkat Kehadiran (%)"
+                  stroke="#0284c7"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#presenceGradient)"
+                  dot={{ r: 4, fill: '#0284c7', strokeWidth: 2, stroke: '#ffffff' }}
+                  activeDot={{ r: 6, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }}
+                />
+              </AreaChart>
+            ) : (
+              <BarChart data={weeklyTrendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.2} vertical={false} />
+                <XAxis
+                  dataKey="shortLabel"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                />
+                <RechartsTooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload as (typeof weeklyTrendData)[0];
+                      return (
+                        <div className="bg-slate-900/95 text-white p-3 rounded-xl border border-slate-700 shadow-xl text-xs space-y-1.5 backdrop-blur-sm min-w-[190px]">
+                          <span className="font-bold text-sky-400 block border-b border-slate-800 pb-1">
+                            {data.label}
+                          </span>
+                          <div className="flex items-center justify-between text-emerald-400">
+                            <span>Tepat Waktu:</span>
+                            <strong>{data.hadirTepat} siswa</strong>
+                          </div>
+                          <div className="flex items-center justify-between text-amber-400">
+                            <span>Terlambat:</span>
+                            <strong>{data.hadirTerlambat} siswa</strong>
+                          </div>
+                          <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
+                            <span>Rasio Ketepatan:</span>
+                            <strong className="text-white">{data.rasioTepatWaktu}%</strong>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <RechartsLegend
+                  wrapperStyle={{ paddingTop: 10, fontSize: 11 }}
+                  formatter={(value) => {
+                    const labels: Record<string, string> = {
+                      hadirTepat: 'Tepat Waktu',
+                      hadirTerlambat: 'Terlambat',
+                    };
+                    return <span className="text-slate-700 dark:text-slate-300 font-medium">{labels[value] || value}</span>;
+                  }}
+                />
+                <Bar dataKey="hadirTepat" name="hadirTepat" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="hadirTerlambat" name="hadirTerlambat" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 4. Progress Bar Komposisi Kedisiplinan Keseluruhan */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>

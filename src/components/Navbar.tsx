@@ -26,6 +26,9 @@ import {
   MapPin,
   BarChart3,
   SlidersHorizontal,
+  CheckCircle2,
+  HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -43,9 +46,12 @@ interface NavbarProps {
   pendingOfflineCount?: number;
   onTriggerSync?: () => void;
   isSyncing?: boolean;
+  syncProgress?: number;
+  syncPhase?: 'idle' | 'offline' | 'reconnecting' | 'syncing' | 'completed';
   isDarkMode?: boolean;
   onToggleDarkMode?: (e?: React.MouseEvent<HTMLElement>) => void;
   onOpenProfilSiswa?: () => void;
+  onOpenWalkthrough?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -63,9 +69,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendingOfflineCount = 0,
   onTriggerSync,
   isSyncing = false,
+  syncProgress = 0,
+  syncPhase = 'idle',
   isDarkMode = false,
   onToggleDarkMode,
   onOpenProfilSiswa,
+  onOpenWalkthrough,
 }) => {
   const getRoleIcon = (role: Role) => {
     switch (role) {
@@ -208,8 +217,51 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* User Role Badge & Actions */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
 
-          {/* Internet Connection Status Indicator */}
-          {isOnline ? (
+          {/* Internet Connection Status Indicator & Animated Sync Progress */}
+          {!isOnline ? (
+            <div
+              id="indicator-internet-offline"
+              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-medium cursor-default select-none animate-pulse flex items-center justify-center gap-1.5 shrink-0 shadow-xs"
+              title={`Koneksi Terputus - Mode Offline Aktif.${pendingOfflineCount > 0 ? ` ${pendingOfflineCount} presensi tersimpan di antrean lokal.` : ''}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+              <WifiOff className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span className="hidden md:inline text-[11px] font-semibold">
+                Offline {pendingOfflineCount > 0 ? `(${pendingOfflineCount})` : ''}
+              </span>
+            </div>
+          ) : syncPhase === 'reconnecting' || syncPhase === 'syncing' || isSyncing ? (
+            <button
+              id="indicator-internet-syncing"
+              type="button"
+              onClick={onTriggerSync}
+              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-300 text-xs font-medium cursor-pointer select-none flex items-center justify-center gap-1.5 shrink-0 transition-all hover:bg-sky-500/30 relative overflow-hidden group active:scale-95 shadow-xs"
+              title={`Menyinkronkan data offline ke Cloud Database (${syncProgress}%). Klik untuk sinkronisasi paksa.`}
+              aria-label="Proses Sinkronisasi Cloud"
+            >
+              {/* Animated background progress bar */}
+              <div
+                className="absolute inset-0 bg-sky-500/20 transition-all duration-300 pointer-events-none"
+                style={{ width: `${Math.max(5, syncProgress)}%` }}
+              />
+              <RefreshCw className="w-3.5 h-3.5 text-sky-400 animate-spin shrink-0 relative z-10" />
+              <span className="relative z-10 text-[11px] font-bold font-mono">
+                {syncProgress > 0 ? `${syncProgress}%` : 'Sync...'}
+              </span>
+              <span className="hidden lg:inline relative z-10 text-[10px] text-sky-200">
+                {syncPhase === 'reconnecting' ? 'Menghubungkan' : 'Menyinkronkan'}
+              </span>
+            </button>
+          ) : syncPhase === 'completed' ? (
+            <div
+              id="indicator-internet-synced"
+              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 text-xs font-medium cursor-default select-none flex items-center justify-center gap-1.5 shrink-0 shadow-xs transition-all animate-bounce"
+              title="Koneksi Pulih & Semua Data Berhasil Disinkronkan ke Cloud Database!"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-[11px] font-bold">100% Tersinkron</span>
+            </div>
+          ) : (
             <div
               id="indicator-internet-online"
               className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-medium cursor-default select-none flex items-center justify-center gap-1.5 shrink-0"
@@ -218,16 +270,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <Wifi className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
               <span className="hidden md:inline text-[11px] font-semibold">Online</span>
-            </div>
-          ) : (
-            <div
-              id="indicator-internet-offline"
-              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-medium cursor-default select-none animate-pulse flex items-center justify-center gap-1.5 shrink-0"
-              title="Koneksi Terputus - Mode Offline Aktif."
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-              <WifiOff className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-              <span className="hidden md:inline text-[11px] font-semibold">Offline</span>
             </div>
           )}
 
@@ -302,6 +344,21 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* PWA Install Button */}
           <PWAInstallButton />
+
+          {/* Panduan & Walkthrough Button */}
+          {onOpenWalkthrough && (
+            <button
+              id="btn-open-walkthrough"
+              type="button"
+              onClick={onOpenWalkthrough}
+              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg border border-sky-500/30 hover:border-sky-500/50 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 transition-all flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0 active:scale-95"
+              title="Panduan Singkat & Walkthrough Sistem PKL (Klik untuk buka panduan langkah-demi-langkah)"
+              aria-label="Panduan Sistem"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span className="hidden xl:inline text-[11px]">Panduan</span>
+            </button>
+          )}
 
           {/* Dark Mode Toggle Button */}
           {onToggleDarkMode && (

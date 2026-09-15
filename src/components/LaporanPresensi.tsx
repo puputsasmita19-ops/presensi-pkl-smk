@@ -18,9 +18,12 @@ import {
   ShieldCheck,
   Building2,
   GraduationCap,
+  Printer,
 } from 'lucide-react';
 import { Presensi, Siswa, DUDI, GuruPembimbing, User } from '../types';
 import { exportPresensiToPDF } from '../utils/pdfExport';
+import { ModalExportPDF } from './ModalExportPDF';
+import { getSavedKopConfig, getSavedPaperSize } from '../data/defaultKop';
 
 interface LaporanPresensiProps {
   currentUser?: User;
@@ -94,6 +97,7 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
     isSiswa && currentSiswa ? currentSiswa.id_siswa : 'ALL'
   );
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
 
   // Quick Date Preset Handlers
   const handleSetPresetToday = () => {
@@ -214,7 +218,29 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
   const percentageHadir =
     totalRecords > 0 ? Math.round((countHadir / totalRecords) * 100) : 0;
 
+  const selectedSiswaObj = siswaList.find((s) => s.id_siswa === selectedSiswaId);
+  const selectedDudiObj = selectedSiswaObj
+    ? dudiList.find((d) => d.id_dudi === selectedSiswaObj.id_dudi)
+    : isDudi && currentUser?.id_dudi
+    ? dudiList.find((d) => d.id_dudi === currentUser.id_dudi)
+    : isSiswa && currentSiswa
+    ? dudiList.find((d) => d.id_dudi === currentSiswa.id_dudi)
+    : null;
+
   const handleExportPDF = () => {
+    const savedKop = getSavedKopConfig();
+    const savedPaper = getSavedPaperSize();
+
+    // Ambil nama pembimbing dari data DUDI terkait secara otomatis
+    const activeDudi =
+      selectedDudiObj ||
+      (accessibleSiswaList.length > 0 ? dudiList.find((d) => d.id_dudi === accessibleSiswaList[0].id_dudi) : null) ||
+      dudiList[0];
+
+    if (activeDudi?.nama_pembimbing) {
+      savedKop.namaPembimbingDudi = activeDudi.nama_pembimbing;
+    }
+
     exportPresensiToPDF({
       siswaList,
       presensiList,
@@ -225,14 +251,13 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
       startDate: dateFilterMode === 'range' ? startDate : undefined,
       endDate: dateFilterMode === 'range' ? endDate : undefined,
       searchQuery: searchQuery.trim() || undefined,
-      schoolName: 'SMK NEGERI 1 INFORMATIKA & TEKNOLOGI',
+      schoolName: savedKop.namaSekolah,
+      userRole: currentUser?.role,
+      userName: currentUser?.nama_lengkap,
+      paperSize: savedPaper,
+      kopConfig: savedKop,
     });
   };
-
-  const selectedSiswaObj = siswaList.find((s) => s.id_siswa === selectedSiswaId);
-  const selectedDudiObj = selectedSiswaObj
-    ? dudiList.find((d) => d.id_dudi === selectedSiswaObj.id_dudi)
-    : null;
 
   const isFilterActive =
     searchQuery.trim() !== '' ||
@@ -289,14 +314,35 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-export-pdf"
-          onClick={handleExportPDF}
-          className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 dark:bg-sky-600 text-sky-400 dark:text-white hover:bg-slate-800 dark:hover:bg-sky-500 hover:text-white flex items-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>{isSiswa ? 'Cetak Kartu Presensi (PDF)' : 'Export to PDF'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {(isAdmin || isGuru || isDudi) && (
+            <button
+              id="btn-preview-pdf"
+              onClick={() => setIsExportModalOpen(true)}
+              className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer border border-slate-200 dark:border-slate-700"
+              title="Buka pratinjau dokumen cetak formal (A4/F4) lengkap dengan pengaturan kop surat, logo, dan lembar pengesahan"
+            >
+              <Printer className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>Pratinjau Cetak & Kop (A4/F4)</span>
+            </button>
+          )}
+
+          <button
+            id="btn-export-pdf"
+            onClick={handleExportPDF}
+            className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 dark:bg-sky-600 text-sky-400 dark:text-white hover:bg-slate-800 dark:hover:bg-sky-500 hover:text-white flex items-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer"
+            title="Unduh berkas PDF formal dokumen rekapitulasi presensi"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>
+              {isSiswa
+                ? 'Cetak Kartu Presensi (PDF)'
+                : isGuru
+                ? 'Unduh PDF Rekap Bimbingan'
+                : 'Unduh Rekapitulasi PDF Resmi'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Enhanced Filter Control Box */}
@@ -826,6 +872,28 @@ export const LaporanPresensi: React.FC<LaporanPresensiProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Modal Pratinjau Dokumen Siap Cetak A4 */}
+      <ModalExportPDF
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        currentUser={
+          currentUser || {
+            id_user: 'USR-ADMIN-01',
+            username: 'admin',
+            role: 'Admin',
+            nama_lengkap: 'Administrator PKL SMK',
+          }
+        }
+        siswaList={siswaList}
+        dudiList={dudiList}
+        guruList={guruList}
+        presensiList={presensiList}
+        selectedMonth={selectedMonth}
+        startDate={dateFilterMode === 'range' ? startDate : ''}
+        endDate={dateFilterMode === 'range' ? endDate : ''}
+        selectedSiswaId={selectedSiswaId}
+      />
     </div>
   );
 };

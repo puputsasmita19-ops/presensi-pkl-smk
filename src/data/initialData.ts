@@ -5,6 +5,7 @@ export const INITIAL_FONNTE_CONFIG: FonnteConfig = {
   senderPhone: '6281234567890',
   autoNotifyParentOnAbsence: true,
   autoNotifyOnCheckIn: true,
+  autoNotifyDudiOnNewJournal: true,
 };
 
 export const INITIAL_USERS: User[] = [

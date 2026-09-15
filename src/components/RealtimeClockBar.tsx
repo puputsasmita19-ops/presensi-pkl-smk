@@ -1,15 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Calendar, MapPin, ChevronRight } from 'lucide-react';
+import { Clock, Calendar, MapPin, ChevronRight, Bell, BellOff } from 'lucide-react';
 import {
   usePrayerTimes,
   savePrayerLocation,
   reverseGeocodeLocation,
+  getSavedPrayerReminderConfig,
+  PRAYER_REMINDER_CONFIG_EVENT,
 } from '../utils/prayerTimesService';
 import { JadwalSholatModal } from './JadwalSholatModal';
 
 export const RealtimeClockBar: React.FC = () => {
   const [is24Hour, setIs24Hour] = useState<boolean>(true);
   const [isPrayerModalOpen, setIsPrayerModalOpen] = useState<boolean>(false);
+  const [isReminderEnabled, setIsReminderEnabled] = useState<boolean>(() =>
+    getSavedPrayerReminderConfig().enabled
+  );
+
+  useEffect(() => {
+    const handleConfigChange = () => {
+      setIsReminderEnabled(getSavedPrayerReminderConfig().enabled);
+    };
+    window.addEventListener(PRAYER_REMINDER_CONFIG_EVENT, handleConfigChange);
+    window.addEventListener('storage', handleConfigChange);
+    return () => {
+      window.removeEventListener(PRAYER_REMINDER_CONFIG_EVENT, handleConfigChange);
+      window.removeEventListener('storage', handleConfigChange);
+    };
+  }, []);
 
   const {
     currentDate,
@@ -136,6 +153,11 @@ export const RealtimeClockBar: React.FC = () => {
                 <span className="truncate max-w-[90px] sm:max-w-[120px] font-medium">
                   {shortLocation}
                 </span>
+                {isReminderEnabled ? (
+                  <Bell className="w-3 h-3 text-emerald-400 ml-0.5" title="Pengingat Sholat Aktif" />
+                ) : (
+                  <BellOff className="w-3 h-3 text-slate-500 ml-0.5" title="Pengingat Sholat Nonaktif" />
+                )}
                 <ChevronRight className="w-3 h-3 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
               </div>
             </button>

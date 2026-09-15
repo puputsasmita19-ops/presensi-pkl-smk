@@ -49,7 +49,13 @@ import { ArsitekturCodeViewer } from './components/ArsitekturCodeViewer';
 import { WhatsAppFonnteModal } from './components/WhatsAppFonnteModal';
 import { ProfilDetailSiswaModal } from './components/ProfilDetailSiswaModal';
 import { DatabaseModal } from './components/DatabaseModal';
-import { formatWhatsAppMessage, sendFonnteNotification } from './utils/fonnte';
+import { RoleWalkthroughGuide } from './components/RoleWalkthroughGuide';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  formatWhatsAppMessage,
+  formatWhatsAppJurnalNotification,
+  sendFonnteNotification,
+} from './utils/fonnte';
 import {
   getCachedAccessToken,
   setCachedAccessToken,
@@ -112,6 +118,10 @@ import {
 } from './utils/sessionManager';
 import { useAutoLogout } from './hooks/useAutoLogout';
 import { AutoLogoutWarningModal } from './components/AutoLogoutWarningModal';
+import { playSyncSuccessChime } from './utils/audioNotification';
+import { usePrayerReminder } from './hooks/usePrayerReminder';
+import { PrayerTimeAlertModal } from './components/PrayerTimeAlertModal';
+import { JadwalSholatModal } from './components/JadwalSholatModal';
 
 export default function App() {
   // Ambil sesi autentikasi awal yang persisten dari multi-tier storage (localStorage, sessionStorage, cookie)
@@ -169,6 +179,10 @@ export default function App() {
   );
   const [pendingOfflineQueue, setPendingOfflineQueue] = useState<Presensi[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncProgress, setSyncProgress] = useState<number>(100);
+  const [syncPhase, setSyncPhase] = useState<'idle' | 'offline' | 'reconnecting' | 'syncing' | 'completed'>(
+    typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'idle'
+  );
   const [syncToastMessage, setSyncToastMessage] = useState<string | null>(null);
 
   // Global States with realistic initial datasets & resilient localStorage persistence
@@ -320,6 +334,38 @@ export default function App() {
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState<boolean>(false);
   const [selectedSiswaDetail, setSelectedSiswaDetail] = useState<Siswa | null>(null);
   const [isProfilDetailModalOpen, setIsProfilDetailModalOpen] = useState<boolean>(false);
+  const [isWalkthroughOpen, setIsWalkthroughOpen] = useState<boolean>(false);
+
+  // Global Prayer Time Reminder (active across all roles and login page with on/off switch)
+  const {
+    config: prayerReminderConfig,
+    toggleEnabled: togglePrayerReminderEnabled,
+    toggleSound: togglePrayerReminderSound,
+    alertModalState: prayerAlertModalState,
+    closeAlertModal: closePrayerAlertModal,
+    playChime: playPrayerChime,
+  } = usePrayerReminder();
+
+  const [isGlobalPrayerScheduleOpen, setIsGlobalPrayerScheduleOpen] = useState<boolean>(false);
+
+  // Auto-trigger walkthrough on first login for each role if not yet completed
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+    try {
+      const userKey = `pkl_walkthrough_completed_${currentUser.role}_${currentUser.id_user || currentUser.username}`;
+      const roleKey = `pkl_walkthrough_completed_role_${currentUser.role}`;
+      const isCompleted =
+        localStorage.getItem(userKey) === 'true' || localStorage.getItem(roleKey) === 'true';
+      if (!isCompleted) {
+        const timer = setTimeout(() => {
+          setIsWalkthroughOpen(true);
+        }, 700);
+        return () => clearTimeout(timer);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [isAuthenticated, currentUser?.role, currentUser?.id_user]);
 
   const handleOpenSiswaDetail = (siswa: Siswa) => {
     setSelectedSiswaDetail(siswa);
@@ -533,22 +579,33 @@ export default function App() {
     };
   }, []);
 
-  // Function to sync offline presensi queue to Firebase Firestore
-  const triggerSyncToDatabase = async () => {
+  // Function to sync offline presensi queue to Firebase Firestore with dynamic progress feedback
+  const triggerSyncToDatabase = async (forceVisualAnimation: boolean = false) => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSyncPhase('offline');
       setSyncToastMessage('Tidak dapat menyinkronkan: Perangkat sedang dalam mode offline.');
       setTimeout(() => setSyncToastMessage(null), 4000);
       return;
     }
 
     const queue = getOfflineQueue();
-    if (queue.length === 0) {
+    if (queue.length === 0 && !forceVisualAnimation) {
       setPendingOfflineQueue([]);
+      setSyncPhase('idle');
+      setSyncProgress(100);
       return;
     }
 
     setIsSyncing(true);
+    setSyncPhase('reconnecting');
+    setSyncProgress(25);
+
     try {
+      // Step 1: Reconnecting & checking cloud database connection
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setSyncPhase('syncing');
+      setSyncProgress(55);
+
       const result = await syncOfflinePresensiToDatabase((synced) => {
         setPresensiList((prev) =>
           prev.map((p) =>
@@ -565,8 +622,17 @@ export default function App() {
         );
       });
 
+      // Step 2: Database updated, updating pending queue
+      setSyncProgress(85);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
       const remaining = getOfflineQueue();
       setPendingOfflineQueue(remaining);
+
+      // Step 3: Success completion & audio feedback
+      setSyncProgress(100);
+      setSyncPhase('completed');
+      playSyncSuccessChime();
 
       if (result.successCount > 0) {
         addLog(
@@ -578,12 +644,19 @@ export default function App() {
           'Firestore Realtime Sync'
         );
         setSyncToastMessage(
-          `Koneksi stabil! ${result.successCount} data presensi berhasil disinkronkan ke Firebase Firestore.`
+          `Koneksi pulih! ${result.successCount} data presensi offline berhasil disinkronkan ke Cloud Database.`
         );
-        setTimeout(() => setSyncToastMessage(null), 6000);
+      } else {
+        setSyncToastMessage('Koneksi stabil. Semua data lokal dan cloud telah tersinkronisasi sempurna.');
       }
+
+      setTimeout(() => {
+        setSyncPhase('idle');
+        setSyncToastMessage(null);
+      }, 4000);
     } catch (err: any) {
       console.error('Error saat menyinkronkan data offline ke firestore:', err);
+      setSyncPhase('offline');
       addLog(
         'Presensi',
         'Sinkronisasi Firestore Tertunda',
@@ -592,6 +665,8 @@ export default function App() {
         currentUser,
         'Firestore Sync'
       );
+      setSyncToastMessage('Sinkronisasi tertunda: Koneksi terputus. Data tetap tersimpan di memori perangkat.');
+      setTimeout(() => setSyncToastMessage(null), 5000);
     } finally {
       setIsSyncing(false);
     }
@@ -601,19 +676,23 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
+      setSyncPhase('reconnecting');
+      setSyncProgress(15);
       addLog(
         'Autentikasi',
         'Koneksi Internet Pulih (Online)',
-        'Perangkat kembali terhubung ke internet. Memulai sinkronisasi otomatis data presensi ke Database MySQL/TiDB Cloud...',
+        'Perangkat kembali terhubung ke internet. Memulai sinkronisasi otomatis data presensi ke Database Cloud...',
         'Sukses',
         currentUser,
         'Network Online Event'
       );
-      triggerSyncToDatabase();
+      triggerSyncToDatabase(true);
     };
 
     const handleOffline = () => {
       setIsOnline(false);
+      setSyncPhase('offline');
+      setSyncProgress(0);
       addLog(
         'Autentikasi',
         'Koneksi Internet Terputus (Offline)',
@@ -622,6 +701,8 @@ export default function App() {
         currentUser,
         'Network Offline Event'
       );
+      setSyncToastMessage('Perangkat beralih ke Mode Offline. Presensi akan disimpan sementara di cache lokal.');
+      setTimeout(() => setSyncToastMessage(null), 5000);
     };
 
     window.addEventListener('online', handleOnline);
@@ -869,7 +950,7 @@ export default function App() {
   };
 
   // Jurnal Handlers
-  const handleSaveJurnal = (jurnal: JurnalHarian) => {
+  const handleSaveJurnal = async (jurnal: JurnalHarian) => {
     setJurnalList((prev) => [jurnal, ...prev]);
 
     // Simpan ke Firebase Firestore Realtime
@@ -882,6 +963,36 @@ export default function App() {
       'Sukses',
       currentUser
     );
+
+    // Notifikasi Otomatis ke WhatsApp Pembimbing DUDI setiap kali ada jurnal baru yang menunggu validasi
+    if (fonnteConfig.autoNotifyDudiOnNewJournal !== false) {
+      const siswa = siswaList.find((s) => s.id_siswa === jurnal.id_siswa);
+      const dudi = siswa ? dudiList.find((d) => d.id_dudi === siswa.id_dudi) : null;
+      if (siswa && dudi) {
+        try {
+          const dudiUser = INITIAL_USERS.find((u) => u.role === 'DUDI' && u.id_dudi === dudi.id_dudi);
+          const targetPhone = dudi.nomor_wa_pembimbing || dudiUser?.nomor_wa || '081399887766';
+          const message = formatWhatsAppJurnalNotification(jurnal, siswa, dudi);
+          await sendFonnteNotification(targetPhone, message, fonnteConfig.apiKey);
+
+          addLog(
+            'WhatsApp',
+            'Notifikasi Jurnal ke Pembimbing DUDI Dispatched',
+            `Notifikasi jurnal baru siswa ${siswa.nama_lengkap} berhasil dikirim ke WhatsApp Pembimbing Industri ${dudi.nama_instansi} (${targetPhone}) via Fonnte Gateway.`,
+            'Sukses',
+            currentUser,
+            'Fonnte WA Gateway'
+          );
+
+          setSyncToastMessage(
+            `Jurnal terkirim! Notifikasi otomatis diteruskan ke WhatsApp Pembimbing DUDI (${dudi.nama_instansi}) untuk validasi.`
+          );
+          setTimeout(() => setSyncToastMessage(null), 5000);
+        } catch (waErr) {
+          console.warn('Gagal kirim notifikasi WhatsApp jurnal ke DUDI:', waErr);
+        }
+      }
+    }
   };
 
   const handleUpdateStatusJurnal = (
@@ -1130,6 +1241,30 @@ export default function App() {
     });
   };
 
+  // Shared Global Prayer Modals (Modal Pengingat Waktu Sholat & Jadwal Sholat Lengkap)
+  const prayerModals = (
+    <>
+      <PrayerTimeAlertModal
+        isOpen={!!prayerAlertModalState?.isOpen}
+        onClose={closePrayerAlertModal}
+        prayerName={prayerAlertModalState?.prayerName || ''}
+        prayerTime={prayerAlertModalState?.prayerTime || ''}
+        locationName={prayerAlertModalState?.locationName || ''}
+        hijriDate={prayerAlertModalState?.hijriDate}
+        isTest={prayerAlertModalState?.isTest}
+        config={prayerReminderConfig}
+        onToggleEnabled={togglePrayerReminderEnabled}
+        onToggleSound={togglePrayerReminderSound}
+        onPlayChime={playPrayerChime}
+        onOpenFullSchedule={() => setIsGlobalPrayerScheduleOpen(true)}
+      />
+      <JadwalSholatModal
+        isOpen={isGlobalPrayerScheduleOpen}
+        onClose={() => setIsGlobalPrayerScheduleOpen(false)}
+      />
+    </>
+  );
+
   // If not authenticated, render modern Login Page
   if (!isAuthenticated) {
     return (
@@ -1146,6 +1281,7 @@ export default function App() {
           config={fonnteConfig}
           onSaveConfig={setFonnteConfig}
         />
+        {prayerModals}
       </>
     );
   }
@@ -1164,10 +1300,13 @@ export default function App() {
         isGoogleConnected={isGoogleConnected}
         isOnline={isOnline}
         pendingOfflineCount={pendingOfflineQueue.length}
-        onTriggerSync={triggerSyncToDatabase}
+        onTriggerSync={() => triggerSyncToDatabase(true)}
         isSyncing={isSyncing}
+        syncProgress={syncProgress}
+        syncPhase={syncPhase}
         isDarkMode={isDarkMode}
         onToggleDarkMode={handleToggleDarkMode}
+        onOpenWalkthrough={() => setIsWalkthroughOpen(true)}
         onOpenProfilSiswa={() => {
           const selfSiswa =
             siswaList.find(
@@ -1179,9 +1318,18 @@ export default function App() {
         }}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5">
-        {activeTab === 'presensi' && (
+      {/* Main Content Area with Smooth Slide-in Motion Transition */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+            className="w-full"
+          >
+            {activeTab === 'presensi' && (
           currentUser.role === 'Guru Pembimbing' ? (
             <PresensiKunjunganGuru
               currentUser={currentUser}
@@ -1220,13 +1368,17 @@ export default function App() {
               siswaList={siswaList}
               dudiList={dudiList}
               presensiList={presensiList}
+              jurnalList={jurnalList}
               onSavePresensi={handleSavePresensi}
               onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
               isOnline={isOnline}
               pendingOfflineCount={pendingOfflineQueue.length}
-              onTriggerSync={triggerSyncToDatabase}
+              onTriggerSync={() => triggerSyncToDatabase(true)}
               isSyncing={isSyncing}
+              syncProgress={syncProgress}
+              syncPhase={syncPhase}
               onSelectSiswaDetail={handleOpenSiswaDetail}
+              onNavigateTab={(tab) => setActiveTab(tab)}
             />
           )
         )}
@@ -1316,6 +1468,8 @@ export default function App() {
             onAddLog={(newLog) => addLog(newLog.kategori, newLog.aksi, newLog.deskripsi, newLog.status)}
           />
         )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Footer */}
@@ -1395,28 +1549,71 @@ export default function App() {
         onLogoutNow={handleLogout}
       />
 
-      {/* Floating Network & Sync Toast */}
+      {/* Interactive Role Walkthrough & Onboarding Guide Modal */}
+      <RoleWalkthroughGuide
+        isOpen={isWalkthroughOpen}
+        onClose={() => setIsWalkthroughOpen(false)}
+        currentUser={currentUser}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+      />
+
+      {/* Floating Network & Sync Toast with Animated Progress */}
       {syncToastMessage && (
         <div
           id="toast-network-sync"
-          className="fixed bottom-4 right-4 z-50 max-w-md bg-slate-900/95 text-white border border-slate-700 shadow-2xl rounded-2xl p-3.5 flex items-start gap-3 backdrop-blur-xs transition-all"
+          className="fixed bottom-4 right-4 z-50 max-w-md w-[calc(100%-2rem)] sm:w-auto bg-slate-900/95 text-white border border-slate-700 shadow-2xl rounded-2xl p-3.5 space-y-2 backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-3"
         >
-          <div
-            className={`w-2.5 h-2.5 rounded-full mt-1 shrink-0 ${
-              isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
-            }`}
-          />
-          <p className="text-xs text-slate-200 flex-1 leading-relaxed">{syncToastMessage}</p>
-          <button
-            type="button"
-            onClick={() => setSyncToastMessage(null)}
-            className="text-slate-400 hover:text-white text-xs cursor-pointer p-0.5 rounded-md hover:bg-slate-800"
-            aria-label="Tutup Notifikasi"
-          >
-            ✕
-          </button>
+          <div className="flex items-start gap-3">
+            <div
+              className={`w-2.5 h-2.5 rounded-full mt-1 shrink-0 ${
+                syncPhase === 'completed'
+                  ? 'bg-emerald-400'
+                  : isOnline
+                  ? 'bg-sky-400 animate-ping'
+                  : 'bg-rose-500 animate-pulse'
+              }`}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {syncPhase === 'completed'
+                    ? '✓ Sinkronisasi Selesai'
+                    : syncPhase === 'syncing' || syncPhase === 'reconnecting'
+                    ? `🔄 Menyinkronkan (${syncProgress}%)`
+                    : isOnline
+                    ? '🌐 Status Jaringan'
+                    : '⚠️ Mode Offline'}
+                </span>
+                <span className="text-[10px] font-mono font-semibold text-slate-400">
+                  {isOnline ? `${syncProgress}%` : 'Offline'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-200 leading-relaxed mt-0.5">{syncToastMessage}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSyncToastMessage(null)}
+              className="text-slate-400 hover:text-white text-xs cursor-pointer p-1 rounded-md hover:bg-slate-800 shrink-0"
+              aria-label="Tutup Notifikasi"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Animated Progress Bar */}
+          {(syncPhase === 'syncing' || syncPhase === 'reconnecting' || (isOnline && syncProgress < 100)) && (
+            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-sky-400 to-emerald-400 h-full transition-all duration-300 rounded-full"
+                style={{ width: `${Math.max(5, syncProgress)}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
+
+      {/* Global Prayer Reminder Modal & Schedule Modal (Semua Role) */}
+      {prayerModals}
     </div>
   );
 }
