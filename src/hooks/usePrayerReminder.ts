@@ -80,7 +80,7 @@ export function usePrayerReminder() {
       const currentCfg = getSavedPrayerReminderConfig();
       if (currentCfg.enabled) {
         if (currentCfg.adhanSoundEnabled) {
-          playAdhanAudio();
+          playAdhanAudio(undefined, currentCfg.adhanVoice);
         } else if (currentCfg.soundEnabled) {
           playPrayerCallChime();
         }
@@ -152,7 +152,7 @@ export function usePrayerReminder() {
 
             // Play Adhan sound if enabled, or chime
             if (currentCfg.adhanSoundEnabled) {
-              playAdhanAudio();
+              playAdhanAudio(undefined, currentCfg.adhanVoice);
             } else if (currentCfg.soundEnabled) {
               playPrayerCallChime();
             }

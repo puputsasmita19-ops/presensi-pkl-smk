@@ -1,6 +1,6 @@
 {
   "name": "Presensi PKL SMK",
   "description": "Sistem Presensi & Jurnal Praktik Kerja Lapangan (PKL) SMK berbasis Web & Mobile dengan MySQL / TiDB Cloud, Google Drive API Storage, Geolocation radius, kamera selfie, dan WhatsApp notifikasi.",
-  "requestFramePermissions": ["camera", "geolocation"],
+  "requestFramePermissions": ["camera", "geolocation", "accelerometer", "gyroscope", "magnetometer"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

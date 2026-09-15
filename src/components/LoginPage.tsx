@@ -487,10 +487,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <span className="tracking-tight font-bold">{timeGreeting.greeting}</span>
             </div>
 
-            {/* Mode Running Text untuk Ucapan Selamat Beristirahat / Sub-greeting Waktu */}
+            {/* Mode Running Text untuk Ucapan Waktu & Pesan Motivasi Harian */}
             <div
               id="running-text-ucapan-waktu"
-              className="w-full max-w-[320px] sm:max-w-[340px] mt-2 relative overflow-hidden py-1 px-1 rounded-full bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 shadow-2xs"
+              className="w-full max-w-[340px] sm:max-w-[420px] mt-2 relative overflow-hidden py-1 px-1 rounded-full bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 shadow-2xs"
               title="Arahkan kursor atau tahan sentuhan untuk jeda teks berjalan"
             >
               {/* Left and right fade gradient edges */}
@@ -498,16 +498,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-slate-100 dark:from-slate-900 to-transparent z-10 pointer-events-none rounded-r-full" />
 
               <div className="animate-running-marquee text-[11px] text-slate-600 dark:text-slate-300 font-medium cursor-default select-none">
-                <div className="flex items-center gap-2.5 shrink-0 pr-6">
-                  <span>{renderGreetingIcon()}</span>
-                  <span>{timeGreeting.subGreeting}</span>
-                  <span className="text-slate-400 dark:text-slate-600 text-xs">✦</span>
-                </div>
-                <div className="flex items-center gap-2.5 shrink-0 pr-6">
-                  <span>{renderGreetingIcon()}</span>
-                  <span>{timeGreeting.subGreeting}</span>
-                  <span className="text-slate-400 dark:text-slate-600 text-xs">✦</span>
-                </div>
+                {timeGreeting.positiveQuotes.map((quote, idx) => (
+                  <div key={`quote-1-${idx}`} className="flex items-center gap-2 shrink-0 pr-6">
+                    <span>{renderGreetingIcon()}</span>
+                    <span>{quote}</span>
+                    <span className="text-amber-500/80 dark:text-amber-400/80 text-xs">✦</span>
+                  </div>
+                ))}
+                {timeGreeting.positiveQuotes.map((quote, idx) => (
+                  <div key={`quote-2-${idx}`} className="flex items-center gap-2 shrink-0 pr-6">
+                    <span>{renderGreetingIcon()}</span>
+                    <span>{quote}</span>
+                    <span className="text-amber-500/80 dark:text-amber-400/80 text-xs">✦</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

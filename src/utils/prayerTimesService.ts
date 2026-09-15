@@ -719,6 +719,7 @@ export interface PrayerReminderConfig {
   enabled: boolean; // Master On / Off switch
   soundEnabled: boolean; // Audio chime On / Off switch
   adhanSoundEnabled: boolean; // Kumandang Suara Adzan Otomatis saat Masuk Waktu Sholat (On / Off)
+  adhanVoice?: 'makkah' | 'indonesia'; // Pilihan Suara Adzan Asli (Makkah/Alafasy atau Indonesia)
   popupEnabled: boolean; // Modal Pop-up On / Off switch
   notifySubuh: boolean;
   notifyDzuhur: boolean;
@@ -745,6 +746,7 @@ export const DEFAULT_PRAYER_REMINDER_CONFIG: PrayerReminderConfig = {
   enabled: true,
   soundEnabled: true,
   adhanSoundEnabled: true,
+  adhanVoice: 'makkah',
   popupEnabled: true,
   notifySubuh: true,
   notifyDzuhur: true,
@@ -766,6 +768,7 @@ export function getSavedPrayerReminderConfig(): PrayerReminderConfig {
       enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
       soundEnabled: parsed.soundEnabled !== undefined ? Boolean(parsed.soundEnabled) : true,
       adhanSoundEnabled: parsed.adhanSoundEnabled !== undefined ? Boolean(parsed.adhanSoundEnabled) : true,
+      adhanVoice: parsed.adhanVoice === 'indonesia' ? 'indonesia' : 'makkah',
       popupEnabled: parsed.popupEnabled !== undefined ? Boolean(parsed.popupEnabled) : true,
       notifySubuh: parsed.notifySubuh !== undefined ? Boolean(parsed.notifySubuh) : true,
       notifyDzuhur: parsed.notifyDzuhur !== undefined ? Boolean(parsed.notifyDzuhur) : true,

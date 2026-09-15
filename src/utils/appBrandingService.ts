@@ -181,6 +181,7 @@ export interface TimeGreetingInfo {
   period: 'pagi' | 'siang' | 'sore' | 'malam';
   greeting: string;
   subGreeting: string;
+  positiveQuotes: string[];
   timeRange: string;
   iconName: 'Sunrise' | 'Sun' | 'Sunset' | 'Moon';
   badgeBg: string;
@@ -189,73 +190,117 @@ export interface TimeGreetingInfo {
 }
 
 /**
- * Koleksi kalimat motivasi & pesan positif harian bervariasi sesuai waktu dan hari
+ * Koleksi kalimat motivasi & pesan positif harian bervariasi sesuai hari (Senin-Minggu) dan waktu (Pagi/Siang/Sore/Malam)
  */
-export const DAILY_POSITIVE_QUOTES: Record<'pagi' | 'siang' | 'sore' | 'malam', string[]> = {
-  pagi: [
-    // 0: Minggu
-    'Pagi yang damai! Siapkan energi positif, luangkan waktu bersyukur, dan rencanakan hari dengan penuh optimisme.',
-    // 1: Senin
-    'Awali pekan dengan tekad baru! Setiap langkah disiplin dan ikhtiar hari ini adalah bekal masa depan cemerlang.',
-    // 2: Selasa
-    'Pagi penuh berkah! Senyum, semangat, dan berikan dedikasi terbaik serta karya membanggakan di tempat PKL.',
-    // 3: Rabu
-    'Teruslah bertumbuh dan belajar hal baru. Kesungguhan, integritas, dan kejujuran adalah kunci sukses sejati.',
-    // 4: Kamis
-    'Pagi ceria! Disiplin dan konsistensi adalah jembatan emas antara impian besar dan pencapaian nyata.',
-    // 5: Jumat
-    'Jumat penuh berkah! Awali dengan niat tulus, perbanyak kebaikan, dan tebarkan manfaat bagi sesama.',
-    // 6: Sabtu
-    'Tetap produktif dan bersemangat! Setiap pengalaman berharga hari ini memperkaya wawasan serta keahlian Anda.',
-  ],
-  siang: [
-    // 0: Minggu
-    'Nikmati siang hari dengan tenang, bersyukur atas nikmat kebersamaan dan kesehatan yang prima.',
-    // 1: Senin
-    'Jaga fokus dan stamina! Luangkan rehat sejenak, nikmati santap siang, dan tunaikan sholat Dzuhur tepat waktu.',
-    // 2: Selasa
-    'Setiap tugas yang diselesaikan dengan rapi dan teliti adalah wujud nyata profesionalisme dan dedikasi Anda.',
-    // 3: Rabu
-    'Tetap terhidrasi dan jaga konsentrasi. Tetap ramah, santun, dan selalu solutif menghadapi tantangan.',
-    // 4: Kamis
-    'Siang produktif! Kembangkan terus keterampilan baru dan jalin komunikasi harmonis dengan rekan kerja.',
-    // 5: Jumat
-    'Tunaikan ibadah sholat Jumat / Dzuhur dengan khidmat. Rehat sejenak menyegarkan kembali fisik dan pikiran.',
-    // 6: Sabtu
-    'Manfaatkan siang hari dengan bijak, tetap antusias menyelesaikan amanah dengan hasil optimal.',
-  ],
-  sore: [
-    // 0: Minggu
-    'Menjelang petang hari libur, persiapkan fisik dan mental terbaik menyambut hari esok yang gemilang.',
-    // 1: Senin
-    'Kerja keras hari ini luar biasa! Jangan lupa presensi pulang dan catat jurnal harian dengan rapi.',
-    // 2: Selasa
-    'Satu hari berhasil dilewati dengan dedikasi. Luangkan waktu sholat Ashar dan evaluasi capaian Anda hari ini.',
-    // 3: Rabu
-    'Apresiasi diri atas setiap pencapaian hari ini. Rapikan perlengkapan kerja dan selesaikan presensi tertib.',
-    // 4: Kamis
-    'Menjelang petang, pastikan semua tanggung jawab tuntas dan tetap berhati-hati dalam perjalanan pulang.',
-    // 5: Jumat
-    'Alhamdulillah tugas sepekan terlaksana lancar. Selamat menikmati akhir pekan penuh kehangatan bersama keluarga.',
-    // 6: Sabtu
-    'Sore yang santai dan penuh rasa syukur. Jaga keselamatan serta nikmati momen berharga bersama orang tercinta.',
-  ],
-  malam: [
-    // 0: Minggu
-    'Tidur lebih awal malam ini agar bangun esok pagi dalam kondisi segar, bugar, dan bersemangat menyambut pekan baru.',
-    // 1: Senin
-    'Selamat beristirahat. Lepaskan penat hari ini, bersyukur atas ilmu baru, dan nikmati tidur yang berkualitas.',
-    // 2: Selasa
-    'Malam tenang dan damai. Pulihkan fisik serta pikiran untuk menyongsong hari esok yang lebih cemerlang.',
-    // 3: Rabu
-    'Malam adalah waktu terbaik menenangkan jiwa, berdoa, dan menghimpun energi positif untuk esok hari.',
-    // 4: Kamis
-    'Malam yang penuh ketenangan. Rehat berkualitas adalah investasi terbaik untuk kesehatan jangka panjang.',
-    // 5: Jumat
-    'Selamat berakhir pekan! Nikmati waktu istirahat yang membahagiakan dan pulihkan tenaga sepenuhnya.',
-    // 6: Sabtu
-    'Selamat malam dan selamat beristirahat, biarkan tubuh dan pikiran beristirahat optimal tanpa beban.',
-  ],
+export const DAILY_POSITIVE_QUOTES: Record<'pagi' | 'siang' | 'sore' | 'malam', { main: string[]; wisdom: string[] }> = {
+  pagi: {
+    main: [
+      // 0: Minggu
+      'Pagi yang damai! Siapkan energi positif, luangkan waktu bersyukur, dan rencanakan hari dengan penuh optimisme.',
+      // 1: Senin
+      'Awali pekan dengan tekad baru! Setiap langkah disiplin dan ikhtiar hari ini adalah investasi masa depan cemerlang.',
+      // 2: Selasa
+      'Pagi penuh berkah! Tebarkan senyum, kobarkan semangat, dan berikan dedikasi terbaik serta karya nyata membanggakan.',
+      // 3: Rabu
+      'Teruslah bertumbuh dan belajar hal baru. Kesungguhan, integritas, dan kejujuran adalah kunci sukses sejati.',
+      // 4: Kamis
+      'Pagi ceria! Disiplin dan konsistensi adalah jembatan emas antara impian besar dan pencapaian nyata.',
+      // 5: Jumat
+      'Jumat barakah! Awali dengan niat tulus beribadah, perbanyak kebaikan, dan tebarkan manfaat bagi sesama.',
+      // 6: Sabtu
+      'Tetap produktif dan antusias! Setiap pengalaman berharga hari ini memperkaya wawasan serta keahlian hidup Anda.',
+    ],
+    wisdom: [
+      'Barangsiapa bersungguh-sungguh (Man Jadda Wajada), niscaya ia akan memetik hasilnya.',
+      'Memulai hari dengan rasa syukur akan membuka pintu-pintu kemudahan dan rezeki berlimpah.',
+      'Disiplin waktu di pagi hari adalah fondasi utama keberhasilan para tokoh besar dunia.',
+      'Jadikan setiap tugas sebagai sarana menimba ilmu dan melatih tanggung jawab profesional.',
+      'Senyuman hangat dan keramahan di tempat kerja adalah sedekah yang menyebarkan kebahagiaan.',
+      'Doa orang tua dan niat yang tulus adalah pelindung terbaik sepanjang aktivitas hari ini.',
+      'Kualitas hari ini ditentukan oleh bagaimana kita menyikapi fajar dan memanfaatkan waktu pagi.',
+    ],
+  },
+  siang: {
+    main: [
+      // 0: Minggu
+      'Nikmati siang hari dengan tenang, bersyukur atas nikmat kebersamaan dan kesehatan yang prima.',
+      // 1: Senin
+      'Jaga fokus dan stamina! Luangkan rehat sejenak, nikmati santap siang bergizi, dan tunaikan sholat Dzuhur tepat waktu.',
+      // 2: Selasa
+      'Setiap amanah yang diselesaikan dengan teliti dan rapi adalah cermin profesionalisme tinggi.',
+      // 3: Rabu
+      'Tetap terhidrasi dan jaga konsentrasi. Tetap ramah, santun, dan komunikatif saat bekerja sama.',
+      // 4: Kamis
+      'Siang produktif! Terus kembangkan keterampilan baru dan jalin hubungan harmonis di lingkungan PKL.',
+      // 5: Jumat
+      'Tunaikan ibadah Sholat Jumat dan Dzuhur dengan khidmat. Rehat sejenak menyegarkan jiwa dan raga.',
+      // 6: Sabtu
+      'Manfaatkan siang hari dengan bijak, tetap antusias menyelesaikan amanah dengan hasil optimal.',
+    ],
+    wisdom: [
+      'Menjaga ketepatan waktu ibadah di sela kesibukan adalah bukti kuatnya komitmen spiritual.',
+      'Rehat sejenak di tengah hari dapat memulihkan fokus mental dan daya kreativitas hingga 80%.',
+      'Komunikasi yang sopan dan santun adalah jembatan tercepat menyelesaikan masalah pekerjaan.',
+      'Ketelitian dalam hal kecil membedakan seorang profesional sejati dari yang sekadar bekerja.',
+      'Tubuh yang sehat dan jiwa yang tenang adalah modal utama meraih prestasi belajar dan kerja.',
+      'Membantu rekan yang membutuhkan bantuan akan melipatgandakan keberkahan rezeki dan ilmu.',
+      'Sikap rendah hati saat menerima masukan adalah ciri pribadi yang siap melangkah menjadi pemimpin.',
+    ],
+  },
+  sore: {
+    main: [
+      // 0: Minggu
+      'Menjelang petang hari libur, persiapkan fisik dan mental terbaik menyambut hari esok yang gemilang.',
+      // 1: Senin
+      'Kerja keras dan ketekunan hari ini sungguh luar biasa! Jangan lupa presensi pulang dan lengkapi jurnal harian.',
+      // 2: Selasa
+      'Satu hari berhasil dilewati dengan penuh dedikasi. Luangkan waktu sholat Ashar dan syukuri capaian hari ini.',
+      // 3: Rabu
+      'Apresiasi diri atas setiap pencapaian hari ini. Rapikan tempat kerja dan selesaikan presensi dengan tertib.',
+      // 4: Kamis
+      'Menjelang petang, pastikan seluruh tanggung jawab tuntas dan selalu utamakan keselamatan saat pulang.',
+      // 5: Jumat
+      'Alhamdulillah tugas sepekan terlaksana lancar. Selamat menikmati akhir pekan penuh kehangatan bersama keluarga.',
+      // 6: Sabtu
+      'Sore yang santai dan penuh rasa syukur. Jaga keselamatan serta nikmati momen berharga bersama orang tercinta.',
+    ],
+    wisdom: [
+      'Menutup hari kerja dengan catatan jurnal yang rapi melatih daya refleksi dan akuntabilitas diri.',
+      'Utamakan keselamatan di jalan raya: patuhi rambu lalu lintas dan berkendara dengan tenang.',
+      'Evaluasi harian adalah rahasia terbaik untuk menjadi pribadi yang lebih baik 1% setiap harinya.',
+      'Hati yang bersyukur atas selesainya hari kerja mendatangkan ketenangan batin yang tiada tara.',
+      'Lepaskan beban pekerjaan saat tiba di rumah, hadirkan kehangatan dan senyuman bagi keluarga.',
+      'Waktu petang adalah momen istimewa untuk berdzikir dan menenangkan pikiran dari kepenatan.',
+      'Setiap jerih payah dan keringat yang keluar dalam kebaikan dinilai sebagai ibadah yang mulia.',
+    ],
+  },
+  malam: {
+    main: [
+      // 0: Minggu
+      'Tidur lebih awal malam ini agar bangun esok pagi dalam kondisi segar, bugar, dan bersemangat menyambut pekan baru.',
+      // 1: Senin
+      'Selamat beristirahat. Lepaskan penat hari ini, bersyukur atas ilmu baru, dan nikmati tidur yang berkualitas.',
+      // 2: Selasa
+      'Malam tenang dan damai. Pulihkan fisik serta pikiran untuk menyongsong hari esok yang lebih cemerlang.',
+      // 3: Rabu
+      'Malam adalah waktu terbaik menenangkan jiwa, berdoa, dan menghimpun energi positif untuk esok hari.',
+      // 4: Kamis
+      'Malam yang penuh ketenangan. Rehat berkualitas adalah investasi terbaik untuk kesehatan jangka panjang.',
+      // 5: Jumat
+      'Selamat berakhir pekan! Nikmati waktu istirahat yang membahagiakan dan pulihkan tenaga sepenuhnya.',
+      // 6: Sabtu
+      'Selamat malam dan selamat beristirahat, biarkan tubuh dan pikiran beristirahat optimal tanpa beban.',
+    ],
+    wisdom: [
+      'Tidur yang cukup 7-8 jam sangat penting untuk daya ingat, kekebalan tubuh, dan kestabilan emosi.',
+      'Maafkan kesalahan orang lain sebelum memejamkan mata agar hati bersih dan tidur lebih nyenyak.',
+      'Menjauhkan layar gadget 30 menit sebelum tidur membantu otak memproduksi hormon melatonin alami.',
+      'Doa sebelum tidur adalah penyerahan diri yang menenangkan kepada Sang Pencipta alam semesta.',
+      'Esok hari menyimpan sejuta peluang baru bagi mereka yang beristirahat cukup malam ini.',
+      'Renungkan satu kebaikan yang telah Anda lakukan hari ini sebagai alasan untuk tersenyum bersyukur.',
+      'Istirahat malam yang berkualitas adalah kunci kebugaran saat menyongsong fajar Subuh esok hari.',
+    ],
+  },
 };
 
 export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
@@ -266,10 +311,17 @@ export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
 
   // 04:00 - 10:59 -> Selamat Pagi
   if (totalMinutes >= 4 * 60 && totalMinutes < 11 * 60) {
+    const mainQuote = DAILY_POSITIVE_QUOTES.pagi.main[dayOfWeek] || 'Awali aktivitas dengan semangat dan integritas terbaik.';
+    const wisdomQuote = DAILY_POSITIVE_QUOTES.pagi.wisdom[dayOfWeek] || 'Memulai hari dengan rasa syukur membuka pintu kemudahan.';
     return {
       period: 'pagi',
       greeting: 'Selamat Pagi',
-      subGreeting: DAILY_POSITIVE_QUOTES.pagi[dayOfWeek] || 'Awali aktivitas dengan semangat dan integritas terbaik.',
+      subGreeting: mainQuote,
+      positiveQuotes: [
+        mainQuote,
+        wisdomQuote,
+        'Pastikan presensi masuk tercatat tepat waktu dan jaga kedisiplinan.',
+      ],
       timeRange: '04:00 - 10:59 WIB',
       iconName: 'Sunrise',
       badgeBg: 'bg-amber-50 dark:bg-amber-950/50',
@@ -280,10 +332,17 @@ export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
 
   // 11:00 - 14:59 -> Selamat Siang
   if (totalMinutes >= 11 * 60 && totalMinutes < 15 * 60) {
+    const mainQuote = DAILY_POSITIVE_QUOTES.siang.main[dayOfWeek] || 'Jaga fokus di tempat magang dan luangkan rehat secukupnya.';
+    const wisdomQuote = DAILY_POSITIVE_QUOTES.siang.wisdom[dayOfWeek] || 'Menjaga ketepatan waktu ibadah adalah bukti integritas.';
     return {
       period: 'siang',
       greeting: 'Selamat Siang',
-      subGreeting: DAILY_POSITIVE_QUOTES.siang[dayOfWeek] || 'Jaga fokus di tempat magang dan luangkan rehat secukupnya.',
+      subGreeting: mainQuote,
+      positiveQuotes: [
+        mainQuote,
+        wisdomQuote,
+        'Luangkan rehat secukupnya, makan siang bergizi, dan tunaikan sholat Dzuhur.',
+      ],
       timeRange: '11:00 - 14:59 WIB',
       iconName: 'Sun',
       badgeBg: 'bg-sky-50 dark:bg-sky-950/50',
@@ -294,10 +353,17 @@ export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
 
   // 15:00 - 18:29 -> Selamat Sore
   if (totalMinutes >= 15 * 60 && totalMinutes < 18 * 60 + 30) {
+    const mainQuote = DAILY_POSITIVE_QUOTES.sore.main[dayOfWeek] || 'Pastikan presensi pulang tercatat dan jurnal harian terisi rapi.';
+    const wisdomQuote = DAILY_POSITIVE_QUOTES.sore.wisdom[dayOfWeek] || 'Menutup hari kerja dengan catatan jurnal melatih akuntabilitas.';
     return {
       period: 'sore',
       greeting: 'Selamat Sore',
-      subGreeting: DAILY_POSITIVE_QUOTES.sore[dayOfWeek] || 'Pastikan presensi pulang tercatat dan jurnal harian terisi rapi.',
+      subGreeting: mainQuote,
+      positiveQuotes: [
+        mainQuote,
+        wisdomQuote,
+        'Pastikan presensi pulang tercatat dan selalu utamakan keselamatan berkendara di jalan.',
+      ],
       timeRange: '15:00 - 18:29 WIB',
       iconName: 'Sunset',
       badgeBg: 'bg-orange-50 dark:bg-orange-950/50',
@@ -307,10 +373,17 @@ export function getTimeGreeting(date: Date = new Date()): TimeGreetingInfo {
   }
 
   // 18:30 - 03:59 -> Selamat Malam
+  const mainQuote = DAILY_POSITIVE_QUOTES.malam.main[dayOfWeek] || 'Selamat beristirahat dan pulihkan energi untuk aktivitas esok hari.';
+  const wisdomQuote = DAILY_POSITIVE_QUOTES.malam.wisdom[dayOfWeek] || 'Tidur yang cukup sangat penting untuk daya ingat dan kesehatan tubuh.';
   return {
     period: 'malam',
     greeting: 'Selamat Malam',
-    subGreeting: DAILY_POSITIVE_QUOTES.malam[dayOfWeek] || 'Selamat beristirahat dan pulihkan energi untuk aktivitas esok hari.',
+    subGreeting: mainQuote,
+    positiveQuotes: [
+      mainQuote,
+      wisdomQuote,
+      'Rehat berkualitas adalah investasi terbaik untuk stamina dan produktivitas esok hari.',
+    ],
     timeRange: '18:30 - 03:59 WIB',
     iconName: 'Moon',
     badgeBg: 'bg-indigo-50 dark:bg-indigo-950/50',

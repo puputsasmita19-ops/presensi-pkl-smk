@@ -141,7 +141,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="pointer-events-none absolute inset-y-0 right-0 w-3.5 bg-gradient-to-l from-slate-800 to-transparent z-10" />
 
         {/* Marquee Animation Track */}
-        <div className="animate-running-marquee flex items-center gap-6 whitespace-nowrap text-xs">
+        <div className="animate-running-marquee-nav flex items-center gap-6 whitespace-nowrap text-xs">
           <span className="font-bold text-slate-200 shrink-0 inline-flex items-center gap-1">
             <span className="text-white">{name}</span>
             <span className="text-sky-400 font-semibold text-[11px]">({roleLabel})</span>

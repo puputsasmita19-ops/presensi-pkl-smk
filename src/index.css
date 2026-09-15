@@ -96,7 +96,7 @@ html.theme-transitioning header {
   }
 }
 
-/* Smooth Running Text (Marquee Ticker) */
+/* Smooth Running Text (Marquee Ticker) - Normal, comfortable reading pace */
 @keyframes marquee-scroll {
   0% {
     transform: translateX(0%);
@@ -109,12 +109,21 @@ html.theme-transitioning header {
 .animate-running-marquee {
   display: inline-flex;
   white-space: nowrap;
-  animation: marquee-scroll 16s linear infinite;
+  animation: marquee-scroll 42s linear infinite;
+  will-change: transform;
+}
+
+.animate-running-marquee-nav {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee-scroll 18s linear infinite;
   will-change: transform;
 }
 
 .animate-running-marquee:hover,
-.animate-running-marquee:active {
+.animate-running-marquee:active,
+.animate-running-marquee-nav:hover,
+.animate-running-marquee-nav:active {
   animation-play-state: paused;
 }
 

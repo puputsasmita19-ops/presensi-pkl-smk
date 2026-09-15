@@ -33,15 +33,23 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
   // Device heading in degrees (0 - 360, 0 = North, 90 = East, 180 = South, 270 = West)
   const [deviceHeading, setDeviceHeading] = useState<number>(0);
   const [isSensorActive, setIsSensorActive] = useState<boolean>(false);
-  const [sensorType, setSensorType] = useState<'gyro' | 'webkit' | 'manual' | 'simulated'>('manual');
+  const [sensorType, setSensorType] = useState<'gyro' | 'webkit' | 'sensor' | 'manual' | 'simulated'>('manual');
   const [needsPermission, setNeedsPermission] = useState<boolean>(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [tiltWarning, setTiltWarning] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [showCalibrationHelp, setShowCalibrationHelp] = useState<boolean>(false);
 
   // Manual angle override for desktop/mouse interaction
   const [manualHeading, setManualHeading] = useState<number>(0);
+
+  // Direct DOM ref for zero-latency 60FPS dial rotation
+  const dialRef = useRef<HTMLDivElement>(null);
+  const unwrappedAngleRef = useRef<number>(0);
+  const lastRawAngleRef = useRef<number | null>(null);
+  const lastStateUpdateRef = useRef<number>(0);
+  const isSensorActiveRef = useRef<boolean>(false);
 
   // Audio & vibration trigger cooldown
   const lastAlignedTriggerRef = useRef<number>(0);
@@ -93,7 +101,7 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
   }, [soundEnabled]);
 
   // Request Device Orientation permission (iOS Safari 13+)
-  const requestOrientationPermission = async () => {
+  const requestOrientationPermission = useCallback(async () => {
     try {
       setPermissionError(null);
       const DeviceOrientationEventAny = window.DeviceOrientationEvent as unknown as {
@@ -104,115 +112,171 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
         const response = await DeviceOrientationEventAny.requestPermission();
         if (response === 'granted') {
           setNeedsPermission(false);
-          startOrientationListener();
+          setPermissionError(null);
         } else {
           setPermissionError('Izin akses sensor gerak/gyroscope ditolak oleh browser.');
         }
-      } else {
-        startOrientationListener();
       }
     } catch (err) {
-      setPermissionError('Tidak dapat meminta izin sensor pada browser ini.');
-      console.warn('Orientation permission error:', err);
+      setPermissionError('Izin sensor memerlukan interaksi sentuhan langsung pada layar.');
+      console.warn('Orientation permission request:', err);
     }
-  };
+  }, []);
 
-  const startOrientationListener = useCallback(() => {
-    // Handler for orientation events
+  // Central handler for raw device heading
+  const handleRawHeading = useCallback((heading: number, type: 'gyro' | 'webkit' | 'sensor') => {
+    if (isNaN(heading) || heading === null) return;
+
+    // Smooth unwrapping to eliminate 360° jump glitch
+    if (lastRawAngleRef.current !== null) {
+      let delta = heading - lastRawAngleRef.current;
+      delta = ((delta + 540) % 360) - 180;
+      unwrappedAngleRef.current += delta;
+    } else {
+      unwrappedAngleRef.current = heading;
+    }
+    lastRawAngleRef.current = heading;
+
+    // Direct hardware-accelerated DOM update for silky smooth 60 FPS rotation
+    if (dialRef.current) {
+      dialRef.current.style.transform = `rotate(${-unwrappedAngleRef.current}deg)`;
+    }
+
+    // Throttle React state update to avoid rendering bottleneck
+    const now = performance.now();
+    if (now - lastStateUpdateRef.current > 40) {
+      lastStateUpdateRef.current = now;
+      setDeviceHeading(Math.round(heading * 10) / 10);
+
+      if (!isSensorActiveRef.current) {
+        isSensorActiveRef.current = true;
+        setIsSensorActive(true);
+        setSensorType(type);
+        setNeedsPermission(false);
+        setPermissionError(null);
+      }
+    }
+  }, []);
+
+  // Multi-Sensor Realtime Orientation Engine
+  useEffect(() => {
+    let isCancelled = false;
+    let genericSensor: any = null;
+
+    const DeviceOrientationEventAny = window.DeviceOrientationEvent as unknown as {
+      requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
+    };
+
+    if (typeof DeviceOrientationEventAny?.requestPermission === 'function') {
+      // iOS Safari detected
+      setNeedsPermission(true);
+    }
+
+    // 1. Try Generic Sensor API: AbsoluteOrientationSensor (High precision 60Hz on modern Android Chrome)
+    try {
+      if (typeof window !== 'undefined' && 'AbsoluteOrientationSensor' in window) {
+        genericSensor = new (window as any).AbsoluteOrientationSensor({ frequency: 60, referenceFrame: 'device' });
+        genericSensor.addEventListener('reading', () => {
+          if (isCancelled || !genericSensor.quaternion) return;
+          const [x, y, z, w] = genericSensor.quaternion;
+          // Calculate heading angle in degrees
+          const tx = 2 * (x * y - w * z);
+          const ty = 1 - 2 * (x * x + z * z);
+          let deg = Math.atan2(tx, ty) * (180 / Math.PI);
+          deg = (360 - deg) % 360;
+          handleRawHeading(deg, 'sensor');
+        });
+        genericSensor.addEventListener('error', (err: any) => {
+          console.warn('AbsoluteOrientationSensor fallback to event listener:', err);
+        });
+        genericSensor.start();
+      }
+    } catch {
+      // fallback to DeviceOrientationEvent
+    }
+
+    // 2. DeviceOrientationEvent listener for iOS (webkitCompassHeading) and Android (alpha/beta/gamma)
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      // Check tilt: device should be held relatively flat for accurate compass reading
+      if (isCancelled) return;
+
+      // Check tilt: alert user if phone is tilted beyond 40 degrees
       const beta = event.beta ?? 0;
       const gamma = event.gamma ?? 0;
       const isExcessiveTilt = Math.abs(beta) > 40 || Math.abs(gamma) > 40;
       setTiltWarning(isExcessiveTilt);
 
-      let heading: number | null = null;
-
-      // 1. iOS Safari webkitCompassHeading (0 to 360 clockwise from magnetic North)
+      // Priority 1: iOS Safari hardware compass heading (0..360 clockwise from magnetic North)
       const eventAny = event as unknown as { webkitCompassHeading?: number };
-      if (typeof eventAny.webkitCompassHeading !== 'undefined' && eventAny.webkitCompassHeading !== null) {
-        const iosHeading = Number(eventAny.webkitCompassHeading);
-        if (!isNaN(iosHeading)) {
-          heading = iosHeading;
-          setSensorType('webkit');
-        }
+      if (typeof eventAny.webkitCompassHeading === 'number' && !isNaN(eventAny.webkitCompassHeading)) {
+        handleRawHeading(eventAny.webkitCompassHeading, 'webkit');
+        return;
       }
 
-      // 2. Android deviceorientationabsolute or standard orientation alpha
-      if (heading === null && event.alpha !== null && typeof event.alpha !== 'undefined') {
-        const alpha = Number(event.alpha);
-        if (!isNaN(alpha)) {
-          // Screen orientation offset (portrait = 0, landscape = 90 / 270)
-          let screenAngle = 0;
-          if (typeof window !== 'undefined' && window.screen?.orientation?.angle !== undefined) {
-            screenAngle = window.screen.orientation.angle;
-          } else if (typeof window !== 'undefined' && typeof (window as unknown as { orientation?: number }).orientation === 'number') {
-            screenAngle = (window as unknown as { orientation: number }).orientation;
-          }
-
-          // In standard W3C, alpha is counter-clockwise (0..360)
-          // True compass heading = (360 - alpha + screenAngle) % 360
-          heading = (360 - alpha + screenAngle + 360) % 360;
-          setSensorType('gyro');
+      // Priority 2: Android deviceorientationabsolute or alpha
+      if (event.alpha !== null && typeof event.alpha === 'number' && !isNaN(event.alpha)) {
+        let screenAngle = 0;
+        if (typeof window !== 'undefined' && window.screen?.orientation?.angle !== undefined) {
+          screenAngle = window.screen.orientation.angle;
+        } else if (typeof window !== 'undefined' && typeof (window as unknown as { orientation?: number }).orientation === 'number') {
+          screenAngle = (window as unknown as { orientation: number }).orientation;
         }
-      }
 
-      if (heading !== null && !isNaN(heading)) {
-        setIsSensorActive(true);
-        setNeedsPermission(false);
-        setPermissionError(null);
-        setDeviceHeading(Math.round(heading * 10) / 10);
+        // Standard W3C compass formula: clockwise degrees from North
+        const heading = (360 - event.alpha + screenAngle + 360) % 360;
+        handleRawHeading(heading, 'gyro');
       }
     };
 
-    // Listen to BOTH deviceorientationabsolute and deviceorientation
-    // to ensure maximum compatibility across Samsung, Xiaomi, Pixel, Oppo, iPhone
+    // Attach listeners on both window and document to ensure events are captured
     try {
       window.addEventListener('deviceorientationabsolute' as unknown as keyof WindowEventMap, handleOrientation as EventListener, true);
-    } catch {
-      // ignore
-    }
+    } catch {}
     try {
       window.addEventListener('deviceorientation', handleOrientation, true);
-    } catch {
-      // ignore
-    }
+    } catch {}
+    try {
+      document.addEventListener('deviceorientationabsolute' as unknown as keyof DocumentEventMap, handleOrientation as EventListener, true);
+    } catch {}
+    try {
+      document.addEventListener('deviceorientation', handleOrientation, true);
+    } catch {}
 
     return () => {
+      isCancelled = true;
+      if (genericSensor) {
+        try {
+          genericSensor.stop();
+        } catch {}
+      }
       try {
         window.removeEventListener('deviceorientationabsolute' as unknown as keyof WindowEventMap, handleOrientation as EventListener, true);
       } catch {}
       try {
         window.removeEventListener('deviceorientation', handleOrientation, true);
       } catch {}
+      try {
+        document.removeEventListener('deviceorientationabsolute' as unknown as keyof DocumentEventMap, handleOrientation as EventListener, true);
+      } catch {}
+      try {
+        document.removeEventListener('deviceorientation', handleOrientation, true);
+      } catch {}
     };
-  }, []);
+  }, [handleRawHeading]);
 
-  // Initialization: check permissions and register listeners
-  useEffect(() => {
-    const DeviceOrientationEventAny = window.DeviceOrientationEvent as unknown as {
-      requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
-    };
-
-    if (typeof DeviceOrientationEventAny?.requestPermission === 'function') {
-      // iOS requires explicit user interaction to trigger requestPermission
-      setNeedsPermission(true);
-    } else {
-      startOrientationListener();
-    }
-  }, [startOrientationListener]);
-
-  // Simulation mode: automatically rotate heading 360 degrees
+  // Simulation mode: automatically rotate heading 360 degrees smoothly
   useEffect(() => {
     if (!isSimulating) return;
 
     const interval = setInterval(() => {
       setManualHeading((prev) => {
-        const next = (prev + 1.5) % 360;
+        const next = (prev + 1.2) % 360;
         setDeviceHeading(Math.round(next * 10) / 10);
+        if (dialRef.current) {
+          dialRef.current.style.transform = `rotate(${-next}deg)`;
+        }
         return next;
       });
-    }, 50);
+    }, 40);
 
     return () => clearInterval(interval);
   }, [isSimulating]);
@@ -299,7 +363,12 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center select-none">
+    <div
+      className="flex flex-col items-center select-none"
+      onTouchStart={() => {
+        if (needsPermission) requestOrientationPermission();
+      }}
+    >
       {/* Top Status & Sensor Badge */}
       <div className="w-full flex items-center justify-between gap-2 mb-3 px-1 flex-wrap text-xs">
         <div className="flex items-center gap-1.5 text-slate-300">
@@ -329,7 +398,7 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
             onClick={requestOrientationPermission}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition cursor-pointer active:scale-95 ${
               isSensorActive
-                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
                 : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500/50'
             }`}
             title="Klik untuk menyinkronkan ulang atau mengaktifkan sensor gyroscope HP"
@@ -348,8 +417,10 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
             <span>
               {isSensorActive
                 ? sensorType === 'webkit'
-                  ? 'iOS Gyro (Aktif)'
-                  : 'Gyroscope HP (Aktif)'
+                  ? 'iOS Compass (Realtime)'
+                  : sensorType === 'sensor'
+                  ? 'Gyro 60Hz (Realtime)'
+                  : 'Gyroscope HP (Realtime)'
                 : isSimulating
                 ? 'Simulasi Putar'
                 : 'Aktifkan Sensor HP'}
@@ -453,7 +524,10 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
 
           {/* Rotating Compass Dial Plate: Rotates by -currentHeading degrees so that top matches device orientation */}
           <div
-            className="absolute inset-0 w-full h-full transition-transform duration-300 ease-out will-change-transform"
+            ref={dialRef}
+            className={`absolute inset-0 w-full h-full will-change-transform ${
+              isSensorActive ? 'transition-none' : 'transition-transform duration-200 ease-out'
+            }`}
             style={{ transform: `rotate(${-currentHeading}deg)` }}
           >
             {/* Cardinal Points on the Dial */}
