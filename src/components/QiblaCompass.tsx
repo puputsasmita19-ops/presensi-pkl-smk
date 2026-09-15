@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Compass,
   Navigation,
@@ -14,6 +14,9 @@ import {
   Info,
   Sparkles,
   RefreshCw,
+  ShieldCheck,
+  Activity,
+  X,
 } from 'lucide-react';
 import { calculateDistanceToKaaba } from '../utils/prayerTimesService';
 
@@ -40,6 +43,20 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [showCalibrationHelp, setShowCalibrationHelp] = useState<boolean>(false);
+
+  // Kompas & Gyroscope Calibration States
+  const [isCalibrated, setIsCalibrated] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('pkl_qibla_calibrated') === 'true';
+  });
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
+  const [calibrationProgress, setCalibrationProgress] = useState<number>(0);
+  const [sensorAccuracy, setSensorAccuracy] = useState<'high' | 'medium' | 'low' | 'unknown'>('unknown');
+
+  const isCalibratedRef = useRef<boolean>(isCalibrated);
+  isCalibratedRef.current = isCalibrated;
+  const hasShownAutoCalibrationRef = useRef<boolean>(false);
+  const motionHistoryRef = useRef<Array<{ beta: number; gamma: number }>>([]);
 
   // Manual angle override for desktop/mouse interaction
   const [manualHeading, setManualHeading] = useState<number>(0);
@@ -205,8 +222,60 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
       const isExcessiveTilt = Math.abs(beta) > 40 || Math.abs(gamma) > 40;
       setTiltWarning(isExcessiveTilt);
 
+      // Evaluate sensor accuracy and calibration state
+      const eventAny = event as unknown as { webkitCompassHeading?: number; webkitCompassAccuracy?: number };
+      const webkitAccuracy = eventAny.webkitCompassAccuracy;
+      const isAbsolute = (event as any).absolute !== false;
+
+      let detectedAccuracy: 'high' | 'medium' | 'low' = 'high';
+      if (typeof webkitAccuracy === 'number') {
+        if (webkitAccuracy < 0 || webkitAccuracy > 20) {
+          detectedAccuracy = 'low';
+        } else if (webkitAccuracy <= 10) {
+          detectedAccuracy = 'high';
+        } else {
+          detectedAccuracy = 'medium';
+        }
+      } else if (!isAbsolute) {
+        // Gyroscope is in relative mode, susceptible to uncalibrated magnetic drift
+        detectedAccuracy = 'low';
+      }
+
+      setSensorAccuracy(detectedAccuracy);
+
+      // If sensor data is inaccurate and user hasn't calibrated yet, auto-suggest calibration
+      if (detectedAccuracy === 'low' && !isCalibratedRef.current && !hasShownAutoCalibrationRef.current) {
+        hasShownAutoCalibrationRef.current = true;
+        setIsCalibrating(true);
+        setCalibrationProgress(15);
+      }
+
+      // Track figure-8 motion during active calibration
+      if (isCalibrating) {
+        const hist = motionHistoryRef.current;
+        hist.push({ beta, gamma });
+        if (hist.length > 60) hist.shift();
+
+        const minBeta = Math.min(...hist.map((h) => h.beta));
+        const maxBeta = Math.max(...hist.map((h) => h.beta));
+        const minGamma = Math.min(...hist.map((h) => h.gamma));
+        const maxGamma = Math.max(...hist.map((h) => h.gamma));
+
+        const betaSpan = Math.min(50, Math.max(0, maxBeta - minBeta));
+        const gammaSpan = Math.min(50, Math.max(0, maxGamma - minGamma));
+        const calcProgress = Math.min(100, Math.round(((betaSpan + gammaSpan) / 90) * 100));
+
+        setCalibrationProgress((prev) => Math.max(prev, calcProgress));
+
+        if (calcProgress >= 100 && !isCalibratedRef.current) {
+          setIsCalibrated(true);
+          try {
+            localStorage.setItem('pkl_qibla_calibrated', 'true');
+          } catch {}
+        }
+      }
+
       // Priority 1: iOS Safari hardware compass heading (0..360 clockwise from magnetic North)
-      const eventAny = event as unknown as { webkitCompassHeading?: number };
       if (typeof eventAny.webkitCompassHeading === 'number' && !isNaN(eventAny.webkitCompassHeading)) {
         handleRawHeading(eventAny.webkitCompassHeading, 'webkit');
         return;
@@ -317,6 +386,14 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
 
   // Turn recommendation instruction
   const getTurnGuidance = () => {
+    if (!isCalibrated && isSensorActive) {
+      return {
+        text: 'Kalibrasi Angka 8 Diperlukan',
+        sub: 'Ketuk di sini & putar HP membentuk angka 8 sebelum mengunci kiblat',
+        color: 'text-amber-400',
+        bg: 'bg-amber-500/20 border-amber-500/50 cursor-pointer hover:bg-amber-500/25',
+      };
+    }
     if (isAligned) {
       return {
         text: "Tepat Menghadap Ka'bah (Allahu Akbar)",
@@ -377,7 +454,36 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
           <span className="text-slate-500 text-[10px]">({latitude.toFixed(2)}°, {longitude.toFixed(2)}°)</span>
         </div>
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
+          {/* Figure-8 Calibration Button */}
+          <button
+            type="button"
+            id="btn-kalibrasi-kompas-figure8"
+            onClick={() => {
+              setIsCalibrating(true);
+              setCalibrationProgress(20);
+              motionHistoryRef.current = [];
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-medium transition cursor-pointer active:scale-95 ${
+              isCalibrated
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                : 'bg-amber-950/60 border-amber-500/50 text-amber-300 animate-pulse'
+            }`}
+            title="Klik untuk membuka instruksi kalibrasi sensor putar angka delapan (figure-8)"
+          >
+            {isCalibrated ? (
+              <>
+                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                <span>Terkalibrasi</span>
+              </>
+            ) : (
+              <>
+                <RotateCcw className="w-3 h-3 text-amber-400" />
+                <span>Kalibrasi Angka 8</span>
+              </>
+            )}
+          </button>
+
           {/* Sound Toggle */}
           <button
             type="button"
@@ -430,6 +536,168 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
         </div>
       </div>
 
+      {/* Sensor Inaccurate / Uncalibrated Warning Banner */}
+      {!isCalibrated && (sensorAccuracy === 'low' || !isSensorActive) && (
+        <div
+          id="banner-kalibrasi-gyro-inaccurate"
+          className="w-full mb-3 p-3 rounded-xl bg-amber-950/70 border border-amber-500/40 flex items-center justify-between gap-2.5 flex-wrap text-xs shadow-xs"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <div className="min-w-0">
+              <span className="font-bold text-amber-200 block">
+                Data Gyroscope Belum Terkalibrasi
+              </span>
+              <span className="text-[11px] text-amber-300/80 block">
+                Putar perangkat membentuk angka delapan (figure-8) sebelum mengaktifkan penunjuk arah kiblat.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsCalibrating(true);
+              setCalibrationProgress(20);
+              motionHistoryRef.current = [];
+            }}
+            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition cursor-pointer ml-auto shadow-xs active:scale-95"
+          >
+            Mulai Kalibrasi Angka 8
+          </button>
+        </div>
+      )}
+
+      {/* MODAL / OVERLAY KALIBRASI KOMPAS BERBASIS DEVICEORIENTATION & FIGURE-8 */}
+      <AnimatePresence>
+        {isCalibrating && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 15 }}
+              className="w-full max-w-sm p-5 rounded-2xl bg-slate-900 border border-emerald-500/40 shadow-2xl text-center relative overflow-hidden"
+            >
+              <button
+                type="button"
+                onClick={() => setIsCalibrating(false)}
+                className="absolute top-3.5 right-3.5 p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                title="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto mb-2.5">
+                <RotateCcw className="w-5 h-5 animate-spin" style={{ animationDuration: '6s' }} />
+              </div>
+
+              <h3 className="text-base font-bold text-white mb-1">
+                Kalibrasi Sensor Kompas
+              </h3>
+              <p className="text-xs text-slate-300 mb-3 leading-relaxed">
+                Putar HP Anda membentuk <span className="text-emerald-400 font-bold">pola angka delapan (figure-8)</span> di udara untuk menyinkronkan sensor magnetik & gyroscope.
+              </p>
+
+              {/* Animated Figure-8 Graphic */}
+              <div className="relative w-48 h-32 mx-auto my-2 flex items-center justify-center">
+                <svg viewBox="0 0 200 120" className="w-full h-full">
+                  {/* Figure 8 Infinity Path */}
+                  <path
+                    d="M 100,60 C 70,15 25,15 25,60 C 25,105 70,105 100,60 C 130,15 175,15 175,60 C 175,105 130,105 100,60 Z"
+                    fill="none"
+                    stroke="rgba(16, 185, 129, 0.25)"
+                    strokeWidth="4"
+                    strokeDasharray="6,6"
+                  />
+                  <path
+                    d="M 100,60 C 70,15 25,15 25,60 C 25,105 70,105 100,60 C 130,15 175,15 175,60 C 175,105 130,105 100,60 Z"
+                    fill="none"
+                    stroke="rgba(52, 211, 153, 0.8)"
+                    strokeWidth="3"
+                    strokeDasharray="20,180"
+                    className="animate-spin"
+                    style={{ transformOrigin: 'center', animationDuration: '4s' }}
+                  />
+                </svg>
+
+                {/* Animated Tilting Phone Icon */}
+                <motion.div
+                  animate={{
+                    x: [-35, -50, -35, 0, 35, 50, 35, 0, -35],
+                    y: [-15, 0, 15, 0, -15, 0, 15, 0, -15],
+                    rotate: [-15, -25, -10, 0, 15, 25, 10, 0, -15],
+                  }}
+                  transition={{
+                    duration: 3.5,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
+                  className="absolute p-2 rounded-lg bg-emerald-500/30 border border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+                >
+                  <Smartphone className="w-6 h-6" />
+                </motion.div>
+              </div>
+
+              {/* Progress Indicator */}
+              <div className="w-full my-3">
+                <div className="flex items-center justify-between text-[11px] mb-1">
+                  <span className="text-slate-400 font-medium">Proses Kalibrasi Sensor:</span>
+                  <span className="font-mono font-bold text-emerald-400">{calibrationProgress}%</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                    animate={{ width: `${calibrationProgress}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-[11px] text-slate-300 text-left space-y-1 mb-4">
+                <div className="flex items-start gap-1.5">
+                  <span className="text-emerald-400 font-bold">•</span>
+                  <span>Gerakkan ponsel membentuk angka 8 mendatar atau tegak di udara secara santai.</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <span className="text-emerald-400 font-bold">•</span>
+                  <span>Jauhkan dari benda logam tebal, speaker magnet, atau laptop.</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-selesai-kalibrasi"
+                  onClick={() => {
+                    setIsCalibrated(true);
+                    setIsCalibrating(false);
+                    try {
+                      localStorage.setItem('pkl_qibla_calibrated', 'true');
+                    } catch {}
+                  }}
+                  className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition cursor-pointer shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{calibrationProgress >= 100 ? 'Aktifkan Penunjuk Arah Kiblat' : 'Simpan & Aktifkan'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCalibrating(false)}
+                  className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* iOS Safari Permission Banner if required */}
       {needsPermission && (
         <div className="w-full mb-3 p-3 rounded-xl bg-sky-950/60 border border-sky-500/40 flex items-center justify-between gap-2 flex-wrap text-xs">
@@ -472,6 +740,13 @@ export const QiblaCompass: React.FC<QiblaCompassProps> = ({
       <motion.div
         animate={{ scale: isAligned ? [1, 1.02, 1] : 1 }}
         transition={{ duration: 0.6, repeat: isAligned ? Infinity : 0 }}
+        onClick={() => {
+          if (!isCalibrated && isSensorActive) {
+            setIsCalibrating(true);
+            setCalibrationProgress(20);
+            motionHistoryRef.current = [];
+          }
+        }}
         className={`w-full p-2.5 rounded-2xl border text-center transition-all duration-300 mb-4 shadow-sm ${guidance.bg}`}
       >
         <div className="flex items-center justify-center gap-2">

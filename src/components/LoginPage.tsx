@@ -490,7 +490,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             {/* Mode Running Text untuk Ucapan Waktu & Pesan Motivasi Harian */}
             <div
               id="running-text-ucapan-waktu"
-              className="w-full max-w-[340px] sm:max-w-[420px] mt-2 relative overflow-hidden py-1 px-1 rounded-full bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 shadow-2xs"
+              className="marquee-container w-full max-w-[340px] sm:max-w-[420px] mt-2 py-1 px-1 rounded-full bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 shadow-2xs"
               title="Arahkan kursor atau tahan sentuhan untuk jeda teks berjalan"
             >
               {/* Left and right fade gradient edges */}
@@ -499,16 +499,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
               <div className="animate-running-marquee text-[11px] text-slate-600 dark:text-slate-300 font-medium cursor-default select-none">
                 {timeGreeting.positiveQuotes.map((quote, idx) => (
-                  <div key={`quote-1-${idx}`} className="flex items-center gap-2 shrink-0 pr-6">
+                  <div key={`quote-1-${idx}`} className="flex items-center gap-2 shrink-0 pr-8">
                     <span>{renderGreetingIcon()}</span>
-                    <span>{quote}</span>
+                    <span className="whitespace-nowrap">{quote}</span>
                     <span className="text-amber-500/80 dark:text-amber-400/80 text-xs">✦</span>
                   </div>
                 ))}
                 {timeGreeting.positiveQuotes.map((quote, idx) => (
-                  <div key={`quote-2-${idx}`} className="flex items-center gap-2 shrink-0 pr-6">
+                  <div key={`quote-2-${idx}`} className="flex items-center gap-2 shrink-0 pr-8">
                     <span>{renderGreetingIcon()}</span>
-                    <span>{quote}</span>
+                    <span className="whitespace-nowrap">{quote}</span>
                     <span className="text-amber-500/80 dark:text-amber-400/80 text-xs">✦</span>
                   </div>
                 ))}

@@ -718,7 +718,7 @@ export function usePrayerTimes() {
 export interface PrayerReminderConfig {
   enabled: boolean; // Master On / Off switch
   soundEnabled: boolean; // Audio chime On / Off switch
-  adhanSoundEnabled: boolean; // Kumandang Suara Adzan Otomatis saat Masuk Waktu Sholat (On / Off)
+  adhanSoundEnabled: boolean; // Kumandang Suara Adzan Otomatis saat Masuk Waktu Sholat (Master On / Off)
   adhanVoice?: 'makkah' | 'indonesia'; // Pilihan Suara Adzan Asli (Makkah/Alafasy atau Indonesia)
   popupEnabled: boolean; // Modal Pop-up On / Off switch
   notifySubuh: boolean;
@@ -727,6 +727,12 @@ export interface PrayerReminderConfig {
   notifyMaghrib: boolean;
   notifyIsya: boolean;
   notifyImsak: boolean;
+  // Pengaturan individual ON/OFF Suara Adzan per waktu sholat
+  adhanSubuh: boolean;
+  adhanDzuhur: boolean;
+  adhanAshar: boolean;
+  adhanMaghrib: boolean;
+  adhanIsya: boolean;
 }
 
 export interface PrayerAlertPayload {
@@ -754,6 +760,11 @@ export const DEFAULT_PRAYER_REMINDER_CONFIG: PrayerReminderConfig = {
   notifyMaghrib: true,
   notifyIsya: true,
   notifyImsak: false,
+  adhanSubuh: true,
+  adhanDzuhur: true,
+  adhanAshar: true,
+  adhanMaghrib: true,
+  adhanIsya: true,
 };
 
 export function getSavedPrayerReminderConfig(): PrayerReminderConfig {
@@ -776,6 +787,11 @@ export function getSavedPrayerReminderConfig(): PrayerReminderConfig {
       notifyMaghrib: parsed.notifyMaghrib !== undefined ? Boolean(parsed.notifyMaghrib) : true,
       notifyIsya: parsed.notifyIsya !== undefined ? Boolean(parsed.notifyIsya) : true,
       notifyImsak: parsed.notifyImsak !== undefined ? Boolean(parsed.notifyImsak) : false,
+      adhanSubuh: parsed.adhanSubuh !== undefined ? Boolean(parsed.adhanSubuh) : true,
+      adhanDzuhur: parsed.adhanDzuhur !== undefined ? Boolean(parsed.adhanDzuhur) : true,
+      adhanAshar: parsed.adhanAshar !== undefined ? Boolean(parsed.adhanAshar) : true,
+      adhanMaghrib: parsed.adhanMaghrib !== undefined ? Boolean(parsed.adhanMaghrib) : true,
+      adhanIsya: parsed.adhanIsya !== undefined ? Boolean(parsed.adhanIsya) : true,
     };
   } catch {
     return DEFAULT_PRAYER_REMINDER_CONFIG;

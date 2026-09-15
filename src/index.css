@@ -96,28 +96,44 @@ html.theme-transitioning header {
   }
 }
 
-/* Smooth Running Text (Marquee Ticker) - Normal, comfortable reading pace */
+/* Smooth Running Text (Marquee Ticker) - Hardware-Accelerated for Low-End Smartphones */
 @keyframes marquee-scroll {
   0% {
-    transform: translateX(0%);
+    transform: translate3d(0, 0, 0);
   }
   100% {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
-.animate-running-marquee {
+/* Specific marquee container wrapper with layout & paint isolation to avoid stutter */
+.marquee-container {
+  contain: layout paint;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Marquee track with will-change: transform scoped strictly to the animated element */
+.animate-running-marquee,
+.marquee-track {
   display: inline-flex;
   white-space: nowrap;
   animation: marquee-scroll 42s linear infinite;
   will-change: transform;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
 }
 
-.animate-running-marquee-nav {
+.animate-running-marquee-nav,
+.marquee-track-nav {
   display: inline-flex;
   white-space: nowrap;
   animation: marquee-scroll 18s linear infinite;
   will-change: transform;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
 }
 
 .animate-running-marquee:hover,

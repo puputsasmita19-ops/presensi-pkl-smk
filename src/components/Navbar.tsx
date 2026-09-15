@@ -133,7 +133,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
     return (
       <div
-        className="relative overflow-hidden w-full max-w-[140px] xs:max-w-[190px] sm:max-w-[280px] md:max-w-[360px] select-none py-0.5"
+        className="marquee-container w-full max-w-[140px] xs:max-w-[190px] sm:max-w-[280px] md:max-w-[360px] select-none py-0.5"
         title={statusText}
       >
         {/* Soft edge blur masks so the running text enters and leaves seamlessly */}

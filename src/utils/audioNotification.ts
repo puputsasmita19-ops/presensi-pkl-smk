@@ -178,6 +178,44 @@ function notifyAdhanListeners(isPlaying: boolean): void {
   });
 }
 
+// Preloaded audio elements cache for instant, zero-buffer playback even on weak signal
+const preloadedAudioElements: Record<AdhanVoice, HTMLAudioElement | null> = {
+  makkah: null,
+  indonesia: null,
+};
+
+/**
+ * Preload adhan audio with preload="auto" in memory beforehand
+ * Ensures audio plays instantaneously without buffering lag when prayer time arrives
+ */
+export function preloadAdhanAudio(voice?: AdhanVoice): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const voicesToPreload: AdhanVoice[] = voice ? [voice] : ['makkah', 'indonesia'];
+
+    voicesToPreload.forEach((v) => {
+      if (!preloadedAudioElements[v]) {
+        const src = v === 'indonesia' ? '/audio/adhan_indonesia.mp3' : '/audio/adhan.mp3';
+        const audio = new Audio(src);
+        audio.preload = 'auto';
+        audio.volume = 1.0;
+        // Trigger background load
+        audio.load();
+        preloadedAudioElements[v] = audio;
+      } else {
+        // Refresh load state if needed
+        const existing = preloadedAudioElements[v];
+        if (existing && existing.readyState === 0) {
+          existing.preload = 'auto';
+          existing.load();
+        }
+      }
+    });
+  } catch (err) {
+    console.warn('Preloading adhan audio failed:', err);
+  }
+}
+
 /**
  * Stop any ongoing Adhan playback immediately
  */

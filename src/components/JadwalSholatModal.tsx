@@ -118,6 +118,19 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
     setReminderConfig(updated);
   };
 
+  const handleTogglePrayerAdhan = (
+    prayerKey: 'Subuh' | 'Dzuhur' | 'Ashar' | 'Maghrib' | 'Isya'
+  ) => {
+    const configKey = `adhan${prayerKey}` as
+      | 'adhanSubuh'
+      | 'adhanDzuhur'
+      | 'adhanAshar'
+      | 'adhanMaghrib'
+      | 'adhanIsya';
+    const updated = savePrayerReminderConfig({ [configKey]: !reminderConfig[configKey] });
+    setReminderConfig(updated);
+  };
+
   const handleToggleTestAdhan = () => {
     if (isPlayingAdhan) {
       stopAdhanAudio();
@@ -666,6 +679,97 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                     />
                   </button>
                 </div>
+              </div>
+
+              {/* DAFTAR CHECKLIST PENGATURAN SUARA ADZAN PER WAKTU SHOLAT */}
+              <div
+                id="checklist-suara-adzan-individual"
+                className="p-3 rounded-xl bg-slate-950/80 border border-emerald-500/25 space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white flex items-center gap-1">
+                      <span>Checklist Suara Adzan Individual:</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/15 px-2 py-0.2 rounded-full border border-emerald-500/30">
+                      Subuh &bull; Dzuhur &bull; Ashar &bull; Maghrib &bull; Isya
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    Atur ON / OFF adzan setiap waktu sholat
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                  {[
+                    { key: 'Subuh' as const, time: prayerTimes.subuh, cfgKey: 'adhanSubuh' as const, icon: '🌅' },
+                    { key: 'Dzuhur' as const, time: prayerTimes.dzuhur, cfgKey: 'adhanDzuhur' as const, icon: '☀️' },
+                    { key: 'Ashar' as const, time: prayerTimes.ashar, cfgKey: 'adhanAshar' as const, icon: '🌤️' },
+                    { key: 'Maghrib' as const, time: prayerTimes.maghrib, cfgKey: 'adhanMaghrib' as const, icon: '🌇' },
+                    { key: 'Isya' as const, time: prayerTimes.isya, cfgKey: 'adhanIsya' as const, icon: '🌙' },
+                  ].map((item) => {
+                    const isAdhanOn = reminderConfig[item.cfgKey] !== false;
+                    const isEffectiveActive = reminderConfig.enabled && reminderConfig.adhanSoundEnabled && isAdhanOn;
+
+                    return (
+                      <div
+                        key={item.key}
+                        className={`p-2 rounded-lg border transition-all flex flex-col justify-between ${
+                          isEffectiveActive
+                            ? 'bg-emerald-950/40 border-emerald-500/40 text-white'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span className="text-xs font-bold flex items-center gap-1 text-white">
+                            <span>{item.icon}</span>
+                            <span>{item.key}</span>
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-emerald-400">
+                            {item.time}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.2 rounded-xs ${
+                              isAdhanOn
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {isAdhanOn ? 'ADZAN ON' : 'SENYAP'}
+                          </span>
+
+                          <button
+                            type="button"
+                            id={`btn-toggle-adhan-${item.key.toLowerCase()}`}
+                            onClick={() => handleTogglePrayerAdhan(item.key)}
+                            className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              isAdhanOn ? 'bg-emerald-600' : 'bg-slate-700'
+                            }`}
+                            role="switch"
+                            aria-checked={isAdhanOn}
+                            title={`Nyalakan / Matikan Suara Adzan Sholat ${item.key}`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                isAdhanOn ? 'translate-x-3' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {!reminderConfig.adhanSoundEnabled && (
+                  <p className="text-[10px] text-amber-400/90 flex items-center gap-1 italic pt-0.5">
+                    <span>⚠️ Catatan: Master tombol "Suara Adzan" sedang OFF. Aktifkan master switch di atas agar adzan dapat berkumandang.</span>
+                  </p>
+                )}
               </div>
 
               {/* Test Button Row */}

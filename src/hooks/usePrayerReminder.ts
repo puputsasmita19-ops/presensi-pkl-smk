@@ -16,6 +16,7 @@ import {
   playPrayerCallChime,
   playAdhanAudio,
   stopAdhanAudio,
+  preloadAdhanAudio,
   isAdhanPlaying,
   addAdhanListener,
 } from '../utils/audioNotification';
@@ -29,6 +30,27 @@ export interface AlertModalState {
   hijriDate: string;
 }
 
+/**
+ * Helper to check if Adhan audio is enabled for an individual prayer
+ */
+export function isAdhanEnabledForPrayer(prayerName: string, cfg: PrayerReminderConfig): boolean {
+  if (!cfg.enabled || !cfg.adhanSoundEnabled) return false;
+  switch (prayerName.toLowerCase()) {
+    case 'subuh':
+      return cfg.adhanSubuh !== false;
+    case 'dzuhur':
+      return cfg.adhanDzuhur !== false;
+    case 'ashar':
+      return cfg.adhanAshar !== false;
+    case 'maghrib':
+      return cfg.adhanMaghrib !== false;
+    case 'isya':
+      return cfg.adhanIsya !== false;
+    default:
+      return false;
+  }
+}
+
 export function usePrayerReminder() {
   const [config, setConfig] = useState<PrayerReminderConfig>(() => getSavedPrayerReminderConfig());
   const [alertModalState, setAlertModalState] = useState<AlertModalState | null>(null);
@@ -40,6 +62,12 @@ export function usePrayerReminder() {
       setAdhanActive(playing);
     });
   }, []);
+
+  // Preload adhan audio with preload="auto" immediately upon mounting & config change
+  // Ensures zero buffering latency when prayer time enters even on weak cellular signal
+  useEffect(() => {
+    preloadAdhanAudio(config.adhanVoice);
+  }, [config.adhanVoice]);
 
   // Sync config state when changed from anywhere (e.g., another component or modal)
   useEffect(() => {
@@ -66,48 +94,146 @@ export function usePrayerReminder() {
     };
   }, []);
 
+  // Central trigger function to execute prayer alert and sound
+  const firePrayerAlert = useCallback((prayerName: string, prayerTime: string, isTest = false) => {
+    const loc = getSavedPrayerLocation();
+    const hijri = getEstimatedHijriDate(new Date());
+    const currentCfg = getSavedPrayerReminderConfig();
+
+    if (currentCfg.enabled) {
+      const shouldPlayAdhan = isAdhanEnabledForPrayer(prayerName, currentCfg);
+      if (shouldPlayAdhan) {
+        // Play instant preloaded authentic adhan audio
+        playAdhanAudio(undefined, currentCfg.adhanVoice);
+      } else if (currentCfg.soundEnabled) {
+        // Fallback gentle chime if adhan is toggled OFF for this specific prayer
+        playPrayerCallChime();
+      }
+    }
+
+    // Desktop browser notification if permitted
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        try {
+          new Notification(`Waktu Sholat ${prayerName} Telah Tiba`, {
+            body: `Pukul ${prayerTime} untuk wilayah ${loc.locationName}. Mari sejenak menunaikan ibadah sholat tepat waktu.`,
+            icon: '/favicon.ico',
+          });
+        } catch {}
+      }
+    }
+
+    // Trigger Pop-up Modal if enabled
+    if (currentCfg.popupEnabled) {
+      setAlertModalState({
+        isOpen: true,
+        prayerName,
+        prayerTime,
+        isTest,
+        locationName: loc.locationName,
+        hijriDate: hijri,
+      });
+    }
+  }, []);
+
   // Listen to manual or programmatic alert triggers (e.g. Test Button)
   useEffect(() => {
     const handleAlertTrigger = (e: Event) => {
       const customEvent = e as CustomEvent<PrayerAlertPayload>;
       const payload = customEvent.detail;
       if (!payload) return;
-
-      const loc = getSavedPrayerLocation();
-      const hijri = getEstimatedHijriDate(new Date());
-
-      // If adhan sound is enabled in config, play adhan; otherwise if sound is enabled play chime
-      const currentCfg = getSavedPrayerReminderConfig();
-      if (currentCfg.enabled) {
-        if (currentCfg.adhanSoundEnabled) {
-          playAdhanAudio(undefined, currentCfg.adhanVoice);
-        } else if (currentCfg.soundEnabled) {
-          playPrayerCallChime();
-        }
-      }
-
-      setAlertModalState({
-        isOpen: true,
-        prayerName: payload.prayerName,
-        prayerTime: payload.prayerTime,
-        isTest: payload.isTest || false,
-        locationName: payload.locationName || loc.locationName,
-        hijriDate: payload.hijriDate || hijri,
-      });
+      firePrayerAlert(payload.prayerName, payload.prayerTime, payload.isTest || false);
     };
 
     window.addEventListener(PRAYER_ALERT_EVENT, handleAlertTrigger);
     return () => {
       window.removeEventListener(PRAYER_ALERT_EVENT, handleAlertTrigger);
     };
-  }, []);
+  }, [firePrayerAlert]);
 
-  // Real-time prayer ticker to detect when prayer time arrives
+  // HIGH-PRECISION SCHEDULER:
+  // Schedules exact millisecond timer for the upcoming prayer and preloads audio
   const configRef = useRef(config);
   configRef.current = config;
 
   useEffect(() => {
-    const checkPrayerTime = () => {
+    let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
+    let preloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNextPrayer = () => {
+      if (schedulerTimer) clearTimeout(schedulerTimer);
+      if (preloadTimer) clearTimeout(preloadTimer);
+
+      const currentCfg = configRef.current;
+      if (!currentCfg.enabled) return;
+
+      const now = new Date();
+      const loc = getSavedPrayerLocation();
+      const prayerTimes = calculateKemenagPrayerTimes(now, loc.lat, loc.lng);
+
+      const prayerCheckList: Array<{ name: string; time: string; enabled: boolean }> = [
+        { name: 'Subuh', time: prayerTimes.subuh, enabled: currentCfg.notifySubuh },
+        { name: 'Dzuhur', time: prayerTimes.dzuhur, enabled: currentCfg.notifyDzuhur },
+        { name: 'Ashar', time: prayerTimes.ashar, enabled: currentCfg.notifyAshar },
+        { name: 'Maghrib', time: prayerTimes.maghrib, enabled: currentCfg.notifyMaghrib },
+        { name: 'Isya', time: prayerTimes.isya, enabled: currentCfg.notifyIsya },
+      ];
+
+      if (currentCfg.notifyImsak) {
+        prayerCheckList.push({ name: 'Imsak', time: prayerTimes.imsak, enabled: true });
+      }
+
+      // Find upcoming prayer time today
+      let nextPrayer: { name: string; time: string; targetDate: Date } | null = null;
+      let minDiffMs = Infinity;
+
+      for (const p of prayerCheckList) {
+        if (!p.enabled) continue;
+        const [hStr, mStr] = p.time.split(':');
+        const h = parseInt(hStr, 10);
+        const m = parseInt(mStr, 10);
+
+        const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+        const diff = target.getTime() - now.getTime();
+
+        if (diff > 0 && diff < minDiffMs) {
+          minDiffMs = diff;
+          nextPrayer = { name: p.name, time: p.time, targetDate: target };
+        }
+      }
+
+      if (nextPrayer && minDiffMs < 24 * 60 * 60 * 1000) {
+        // Preload adhan audio 3 minutes prior to arrival so buffer is warm
+        const preloadDelay = Math.max(0, minDiffMs - 3 * 60 * 1000);
+        preloadTimer = setTimeout(() => {
+          preloadAdhanAudio(currentCfg.adhanVoice);
+        }, preloadDelay);
+
+        // Schedule exact trigger at target millisecond
+        const scheduledPrayer = nextPrayer;
+        schedulerTimer = setTimeout(() => {
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          const todayDateKey = `${year}-${month}-${day}`;
+          const alertKey = `${todayDateKey}_${scheduledPrayer.name}`;
+
+          try {
+            localStorage.setItem(STORAGE_PRAYER_LAST_ALERT, alertKey);
+          } catch {}
+
+          firePrayerAlert(scheduledPrayer.name, scheduledPrayer.time, false);
+          // Reschedule for next prayer
+          scheduleNextPrayer();
+        }, minDiffMs);
+      }
+    };
+
+    scheduleNextPrayer();
+
+    // FAILSAFE TICKER (every 1 second):
+    // In case the tab was sleeping/backgrounded or system clock adjusted
+    const failsafeTick = () => {
       const currentCfg = configRef.current;
       if (!currentCfg.enabled) return;
 
@@ -139,59 +265,32 @@ export function usePrayerReminder() {
       for (const p of prayerCheckList) {
         if (!p.enabled) continue;
 
-        // Check if current HH:mm matches prayer time
         if (p.time === currentTimeStr) {
           const alertKey = `${todayDateKey}_${p.name}`;
           const lastAlert = localStorage.getItem(STORAGE_PRAYER_LAST_ALERT);
 
           if (lastAlert !== alertKey) {
-            // Record alert so it only fires once per prayer per day
             try {
               localStorage.setItem(STORAGE_PRAYER_LAST_ALERT, alertKey);
             } catch {}
 
-            // Play Adhan sound if enabled, or chime
-            if (currentCfg.adhanSoundEnabled) {
-              playAdhanAudio(undefined, currentCfg.adhanVoice);
-            } else if (currentCfg.soundEnabled) {
-              playPrayerCallChime();
-            }
-
-            // Desktop browser notification if permitted
-            if (typeof window !== 'undefined' && 'Notification' in window) {
-              if (Notification.permission === 'granted') {
-                try {
-                  new Notification(`Waktu Sholat ${p.name} Telah Tiba`, {
-                    body: `Pukul ${p.time} untuk wilayah ${loc.locationName}. Mari sejenak menunaikan ibadah sholat tepat waktu.`,
-                    icon: '/favicon.ico',
-                  });
-                } catch {}
-              }
-            }
-
-            // Trigger Pop-up Modal if enabled
-            if (currentCfg.popupEnabled) {
-              setAlertModalState({
-                isOpen: true,
-                prayerName: p.name,
-                prayerTime: p.time,
-                isTest: false,
-                locationName: loc.locationName,
-                hijriDate: getEstimatedHijriDate(now),
-              });
-            }
-
+            firePrayerAlert(p.name, p.time, false);
+            // Re-run scheduler for the rest of the day
+            scheduleNextPrayer();
             break;
           }
         }
       }
     };
 
-    // Check immediately and then every 2 seconds
-    checkPrayerTime();
-    const interval = setInterval(checkPrayerTime, 2000);
-    return () => clearInterval(interval);
-  }, []);
+    const interval = setInterval(failsafeTick, 1000);
+
+    return () => {
+      if (schedulerTimer) clearTimeout(schedulerTimer);
+      if (preloadTimer) clearTimeout(preloadTimer);
+      clearInterval(interval);
+    };
+  }, [config, firePrayerAlert]);
 
   const toggleEnabled = useCallback(() => {
     const updated = savePrayerReminderConfig({ enabled: !config.enabled });
@@ -207,6 +306,20 @@ export function usePrayerReminder() {
     const updated = savePrayerReminderConfig({ adhanSoundEnabled: !config.adhanSoundEnabled });
     setConfig(updated);
   }, [config.adhanSoundEnabled]);
+
+  const togglePrayerAdhan = useCallback(
+    (prayerKey: 'Subuh' | 'Dzuhur' | 'Ashar' | 'Maghrib' | 'Isya') => {
+      const configKey = `adhan${prayerKey}` as
+        | 'adhanSubuh'
+        | 'adhanDzuhur'
+        | 'adhanAshar'
+        | 'adhanMaghrib'
+        | 'adhanIsya';
+      const updated = savePrayerReminderConfig({ [configKey]: !config[configKey] });
+      setConfig(updated);
+    },
+    [config]
+  );
 
   const togglePopup = useCallback(() => {
     const updated = savePrayerReminderConfig({ popupEnabled: !config.popupEnabled });
@@ -249,6 +362,7 @@ export function usePrayerReminder() {
     toggleEnabled,
     toggleSound,
     toggleAdhanSound,
+    togglePrayerAdhan,
     togglePopup,
     updateConfig,
     alertModalState,
