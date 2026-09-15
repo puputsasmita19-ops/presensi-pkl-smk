@@ -109,10 +109,12 @@ html.theme-transitioning header {
 .animate-running-marquee {
   display: inline-flex;
   white-space: nowrap;
-  animation: marquee-scroll 14s linear infinite;
+  animation: marquee-scroll 16s linear infinite;
+  will-change: transform;
 }
 
-.animate-running-marquee:hover {
+.animate-running-marquee:hover,
+.animate-running-marquee:active {
   animation-play-state: paused;
 }
 

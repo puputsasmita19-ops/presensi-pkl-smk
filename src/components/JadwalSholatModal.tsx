@@ -33,13 +33,19 @@ import {
   triggerTestPrayerAlert,
   PRAYER_REMINDER_CONFIG_EVENT,
 } from '../utils/prayerTimesService';
+import { QiblaCompass } from './QiblaCompass';
 
 interface JadwalSholatModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'schedule' | 'qibla';
 }
 
-export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({ isOpen, onClose }) => {
+export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
+  isOpen,
+  onClose,
+  initialTab = 'schedule',
+}) => {
   const {
     currentDate,
     locationState,
@@ -49,6 +55,14 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({ isOpen, on
     hijriFormatted,
     qiblaAngle,
   } = usePrayerTimes();
+
+  const [activeTab, setActiveTab] = useState<'schedule' | 'qibla'>(initialTab);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab || 'schedule');
+    }
+  }, [isOpen, initialTab]);
 
   const [isLoadingLocation, setIsLoadingLocation] = useState<boolean>(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -292,9 +306,43 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({ isOpen, on
             </div>
           </div>
 
+          {/* Modal Tab Switcher: Jadwal Sholat vs Kompas Kiblat Gyroscope */}
+          <div className="flex border-b border-slate-800 bg-slate-950/90 px-4 pt-2 gap-2">
+            <button
+              id="tab-jadwal-sholat-list"
+              type="button"
+              onClick={() => setActiveTab('schedule')}
+              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-2 cursor-pointer border-t border-x ${
+                activeTab === 'schedule'
+                  ? 'bg-slate-900 border-slate-700 text-emerald-400 border-b-slate-900 -mb-px'
+                  : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Jadwal Sholat</span>
+            </button>
+
+            <button
+              id="tab-kompas-kiblat-gyro"
+              type="button"
+              onClick={() => setActiveTab('qibla')}
+              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-2 cursor-pointer border-t border-x ${
+                activeTab === 'qibla'
+                  ? 'bg-slate-900 border-slate-700 text-emerald-400 border-b-slate-900 -mb-px'
+                  : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Kompas Kiblat (Gyroscope)</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                Live
+              </span>
+            </button>
+          </div>
+
           {/* Modal Body */}
-          <div className="p-4 sm:p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-            {/* Geolocation Bar & Actions */}
+          <div className="p-4 sm:p-5 space-y-4 max-h-[72vh] overflow-y-auto">
+            {/* Geolocation Bar & Actions (shared across both tabs) */}
             <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/80 space-y-2">
               <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
                 <div className="flex items-center gap-2 min-w-0">
@@ -373,8 +421,10 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({ isOpen, on
               )}
             </div>
 
-            {/* 5 Main Prayer Times Grid */}
-            <div>
+            {activeTab === 'schedule' ? (
+              <>
+                {/* 5 Main Prayer Times Grid */}
+                <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-emerald-400" />
@@ -600,13 +650,35 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({ isOpen, on
                 </div>
               </div>
 
-              <div className="text-right ml-auto sm:ml-0">
+              <div className="flex items-center gap-2 ml-auto sm:ml-0 flex-wrap">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-300">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Kemenag Standar</span>
                 </div>
+
+                <button
+                  type="button"
+                  id="btn-open-gyro-compass"
+                  onClick={() => setActiveTab('qibla')}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Buka Kompas Gyroscope &rarr;</span>
+                </button>
               </div>
             </div>
+          </>
+        ) : (
+          /* TAB 2: LIVE GYROSCOPE QIBLA COMPASS */
+          <div className="py-1">
+            <QiblaCompass
+              qiblaAngle={qiblaAngle}
+              latitude={locationState.lat}
+              longitude={locationState.lng}
+              locationName={locationState.locationName}
+            />
+          </div>
+        )}
           </div>
 
           {/* Footer Note */}

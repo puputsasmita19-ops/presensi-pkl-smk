@@ -208,7 +208,7 @@ export const RoleWalkthroughGuide: React.FC<RoleWalkthroughGuideProps> = ({
               {
                 icon: GraduationCap,
                 title: 'Daftar Siswa Bimbingan',
-                text: 'Pantau seluruh siswa asuhan Anda di berbagai tempat industri dalam satu layar terpusat.',
+                text: 'Pantau seluruh siswa bimbingan Anda di berbagai tempat industri dalam satu layar terpusat.',
               },
               {
                 icon: BarChart3,

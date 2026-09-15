@@ -32,11 +32,14 @@ import {
   CheckCircle2,
   Phone,
   MessageCircle,
+  Sparkles,
 } from 'lucide-react';
 import { Siswa, DUDI, GuruPembimbing, User, ShiftKerja, TipeJadwalKerja } from '../types';
 import { NAMA_HARI_INDONESIA } from '../utils/shiftHelper';
 import { ImportExportModal, MasterDataType } from './ImportExportModal';
 import { compressImageFile } from '../utils/imageCompressor';
+import { useAppBranding } from '../utils/appBrandingService';
+import { AppBrandingModal } from './AppBrandingModal';
 import {
   getStoredUsers,
   getAdminContactSettings,
@@ -138,6 +141,10 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
   const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
   const [importExportTargetType, setImportExportTargetType] = useState<MasterDataType>('dudi');
   const [importExportMode, setImportExportMode] = useState<'import' | 'export'>('import');
+
+  // App Branding & Identity Customization
+  const { branding, updateBranding, resetBranding } = useAppBranding();
+  const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
 
   const handleOpenImportExport = (type: MasterDataType, mode: 'import' | 'export') => {
     setImportExportTargetType(type);
@@ -575,6 +582,17 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
           >
             <Key className="w-3.5 h-3.5 text-amber-500" />
             <span>Akun & Password ({usersList.length})</span>
+          </button>
+
+          <button
+            id="btn-open-branding-admin"
+            type="button"
+            onClick={() => setIsBrandingModalOpen(true)}
+            className="px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 text-sky-700 bg-sky-50/80 hover:bg-sky-100/80 border border-sky-200/70 shadow-2xs cursor-pointer"
+            title="Ubah Logo, Nama Aplikasi & Tagline"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+            <span>Logo & Branding</span>
           </button>
         </div>
 
@@ -1902,6 +1920,15 @@ export const MasterDataAdmin: React.FC<MasterDataAdminProps> = ({
         onImportSiswa={handleBatchImportSiswa}
         onImportDUDI={handleBatchImportDUDI}
         onImportGuru={handleBatchImportGuru}
+      />
+
+      {/* APP BRANDING & LOGO CUSTOMIZATION MODAL */}
+      <AppBrandingModal
+        isOpen={isBrandingModalOpen}
+        onClose={() => setIsBrandingModalOpen(false)}
+        config={branding}
+        onSave={updateBranding}
+        onReset={resetBranding}
       />
     </div>
   );

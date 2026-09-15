@@ -12,6 +12,10 @@ import {
   PRAYER_REMINDER_CONFIG_EVENT,
 } from '../utils/prayerTimesService';
 import {
+  useAppBranding,
+  getTimeGreeting,
+} from '../utils/appBrandingService';
+import {
   Lock,
   User as UserIcon,
   UserCheck,
@@ -29,12 +33,16 @@ import {
   RotateCcw,
   Sun,
   Moon,
+  Sunrise,
+  Sunset,
   X,
   MapPin,
   ChevronRight,
   Sparkles,
   Bell,
   BellOff,
+  Award,
+  Compass,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -97,6 +105,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [roleMismatch, setRoleMismatch] = useState<RoleMismatchInfo | null>(null);
   const [isAdminHelpOpen, setIsAdminHelpOpen] = useState(false);
   const [isPrayerModalOpen, setIsPrayerModalOpen] = useState(false);
+  const [prayerModalTab, setPrayerModalTab] = useState<'schedule' | 'qibla'>('schedule');
   const [isReminderEnabled, setIsReminderEnabled] = useState<boolean>(() =>
     getSavedPrayerReminderConfig().enabled
   );
@@ -120,7 +129,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     countdown,
     hijriFormatted,
     shortLocation,
+    qiblaAngle,
   } = usePrayerTimes();
+
+  // App Branding & Identity (Nama Aplikasi & Logo Kustom)
+  const { branding } = useAppBranding();
 
   // Real-time Clock
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -166,6 +179,52 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const minutesStr = String(currentTime.getMinutes()).padStart(2, '0');
   const secondsStr = String(currentTime.getSeconds()).padStart(2, '0');
   const timeFormatted = `${hoursStr}:${minutesStr}:${secondsStr} ${timezoneStr}`;
+
+  // Dynamic Greeting according to time of day (Pagi, Siang, Sore, Malam)
+  const timeGreeting = getTimeGreeting(currentTime);
+
+  const renderGreetingIcon = () => {
+    switch (timeGreeting.iconName) {
+      case 'Sunrise':
+        return <Sunrise className="w-4 h-4 text-amber-500 shrink-0" />;
+      case 'Sun':
+        return <Sun className="w-4 h-4 text-sky-500 shrink-0" />;
+      case 'Sunset':
+        return <Sunset className="w-4 h-4 text-orange-500 shrink-0" />;
+      case 'Moon':
+      default:
+        return <Moon className="w-4 h-4 text-indigo-400 shrink-0" />;
+    }
+  };
+
+  const renderAppLogo = () => {
+    if (branding.logoUrl) {
+      return (
+        <img
+          src={branding.logoUrl}
+          alt={branding.appName}
+          className="w-full h-full object-contain p-1 rounded-2xl"
+          onError={(e) => {
+            // Fallback jika url rusak
+            (e.target as HTMLElement).style.display = 'none';
+          }}
+        />
+      );
+    }
+    switch (branding.logoPreset) {
+      case 'tutwuri':
+        return <Award className="w-7 h-7 text-white" />;
+      case 'gedung':
+        return <Building2 className="w-7 h-7 text-white" />;
+      case 'bintang':
+        return <Sparkles className="w-7 h-7 text-white" />;
+      case 'presensi':
+        return <UserCheck className="w-7 h-7 text-white" />;
+      case 'toga':
+      default:
+        return <GraduationCap className="w-7 h-7 text-white" />;
+    }
+  };
 
   // Change active tab & clear alerts
   const handleSelectRole = (role: LoginPilihanRole) => {
@@ -391,38 +450,84 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       </div>
 
       <div className="w-full max-w-sm relative z-10">
-        {/* Clean Header */}
-        <div className="text-center mb-4">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 to-teal-500 text-white shadow-lg shadow-sky-500/20 mb-2">
-            <GraduationCap className="w-6 h-6" />
+        {/* Clean Header with Logo, App Title, Hari Tanggal Waktu, & Dynamic Greeting */}
+        <div className="text-center mb-3.5">
+          {/* Logo Container */}
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-500 to-teal-500 text-white shadow-lg shadow-sky-500/20 mb-2 overflow-hidden border border-white/40 dark:border-slate-700/60 p-0.5">
+            {renderAppLogo()}
           </div>
 
+          {/* App Title */}
           <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-            Presensi PKL SMK
+            {branding.appName}
           </h1>
 
-          {/* Real-time date & time */}
-          <div className="inline-flex items-center gap-2 mt-1.5 px-3 py-1 rounded-full bg-white/90 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400 shadow-xs">
+          {branding.appTagline && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-[290px] mx-auto line-clamp-1">
+              {branding.appTagline}
+            </p>
+          )}
+
+          {/* Tampilan Hari, Tanggal, & Waktu Real-Time */}
+          <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-white/90 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400 shadow-xs">
             <Clock className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 animate-pulse shrink-0" />
-            <span className="text-slate-600 dark:text-slate-300">{formattedDate}</span>
+            <span className="text-slate-700 dark:text-slate-300 font-semibold">{formattedDate}</span>
             <span className="text-slate-300 dark:text-slate-600">•</span>
-            <span className="font-mono font-medium text-slate-800 dark:text-slate-200 tracking-wider">
+            <span className="font-mono font-bold text-slate-800 dark:text-slate-200 tracking-wider">
               {timeFormatted}
             </span>
+          </div>
+
+          {/* Dynamic Ucapan Waktu (Pagi / Siang / Sore / Malam) dengan Mode Running Text */}
+          <div className="mt-2.5 flex flex-col items-center w-full">
+            <div
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold shadow-2xs backdrop-blur-xs transition-all duration-300 ${timeGreeting.badgeBg} ${timeGreeting.badgeBorder} ${timeGreeting.badgeText}`}
+            >
+              {renderGreetingIcon()}
+              <span className="tracking-tight font-bold">{timeGreeting.greeting}</span>
+            </div>
+
+            {/* Mode Running Text untuk Ucapan Selamat Beristirahat / Sub-greeting Waktu */}
+            <div
+              id="running-text-ucapan-waktu"
+              className="w-full max-w-[320px] sm:max-w-[340px] mt-2 relative overflow-hidden py-1 px-1 rounded-full bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 shadow-2xs"
+              title="Arahkan kursor atau tahan sentuhan untuk jeda teks berjalan"
+            >
+              {/* Left and right fade gradient edges */}
+              <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-slate-100 dark:from-slate-900 to-transparent z-10 pointer-events-none rounded-l-full" />
+              <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-slate-100 dark:from-slate-900 to-transparent z-10 pointer-events-none rounded-r-full" />
+
+              <div className="animate-running-marquee text-[11px] text-slate-600 dark:text-slate-300 font-medium cursor-default select-none">
+                <div className="flex items-center gap-2.5 shrink-0 pr-6">
+                  <span>{renderGreetingIcon()}</span>
+                  <span>{timeGreeting.subGreeting}</span>
+                  <span className="text-slate-400 dark:text-slate-600 text-xs">✦</span>
+                </div>
+                <div className="flex items-center gap-2.5 shrink-0 pr-6">
+                  <span>{renderGreetingIcon()}</span>
+                  <span>{timeGreeting.subGreeting}</span>
+                  <span className="text-slate-400 dark:text-slate-600 text-xs">✦</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Realtime Waktu Sholat 5 Waktu Widget Card on Login Page */}
         <div className="mb-3.5">
-          <button
-            id="btn-login-jadwal-sholat"
-            type="button"
-            onClick={() => setIsPrayerModalOpen(true)}
-            className="w-full text-left p-2.5 sm:p-3 rounded-2xl bg-white/95 dark:bg-slate-900/90 border border-emerald-500/30 hover:border-emerald-500/60 dark:border-emerald-500/30 dark:hover:border-emerald-400/60 shadow-md shadow-emerald-500/5 transition-all cursor-pointer group active:scale-98"
-            title={`Jadwal Sholat 5 Waktu di ${locationState.locationName}. Klik untuk detail & Arah Kiblat`}
+          <div
+            id="login-jadwal-sholat-card"
+            className="w-full text-left p-2.5 sm:p-3 rounded-2xl bg-white/95 dark:bg-slate-900/90 border border-emerald-500/30 hover:border-emerald-500/60 dark:border-emerald-500/30 dark:hover:border-emerald-400/60 shadow-md shadow-emerald-500/5 transition-all group"
           >
             {/* Top row: Next Prayer & Location */}
-            <div className="flex items-center justify-between gap-2 mb-2">
+            <div
+              className="flex items-center justify-between gap-2 mb-2 cursor-pointer"
+              onClick={() => {
+                setPrayerModalTab('schedule');
+                setIsPrayerModalOpen(true);
+              }}
+              title={`Jadwal Sholat 5 Waktu di ${locationState.locationName}. Klik untuk detail`}
+            >
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-sm">🕌</span>
                 <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
@@ -463,7 +568,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
 
             {/* 5 Main Prayer Times Mini Badges Strip */}
-            <div className="grid grid-cols-5 gap-1 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+            <div
+              className="grid grid-cols-5 gap-1 pt-1.5 border-t border-slate-100 dark:border-slate-800 cursor-pointer"
+              onClick={() => {
+                setPrayerModalTab('schedule');
+                setIsPrayerModalOpen(true);
+              }}
+            >
               {[
                 { name: 'Subuh', time: prayerTimes.subuh, isNext: countdown.name === 'Subuh' },
                 { name: 'Dzuhur', time: prayerTimes.dzuhur, isNext: countdown.name === 'Dzuhur' },
@@ -488,7 +599,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </div>
               ))}
             </div>
-          </button>
+
+            {/* Direct Qibla Compass Trigger Row */}
+            <div className="flex items-center justify-between pt-2 mt-1.5 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                <Compass className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span>Kiblat:</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{qiblaAngle}°</span>
+                <span className="text-[10px] text-slate-400">(Barat Laut)</span>
+              </div>
+
+              <button
+                type="button"
+                id="btn-login-open-qibla"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPrayerModalTab('qibla');
+                  setIsPrayerModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1 font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition cursor-pointer text-[10.5px] group/qibla"
+                title="Buka Kompas Arah Kiblat interaktif dengan Gyroscope HP"
+              >
+                <span>Kompas Gyroscope</span>
+                <ChevronRight className="w-3 h-3 group-hover/qibla:translate-x-0.5 transition-transform" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Minimalist Login Card */}
@@ -736,6 +872,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       <JadwalSholatModal
         isOpen={isPrayerModalOpen}
         onClose={() => setIsPrayerModalOpen(false)}
+        initialTab={prayerModalTab}
       />
     </div>
   );

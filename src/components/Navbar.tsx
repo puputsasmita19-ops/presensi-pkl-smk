@@ -1,9 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Role } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
 import { RealtimeClockBar } from './RealtimeClockBar';
 import { DbStatusResponse } from '../utils/apiService';
+import { useAppBranding } from '../utils/appBrandingService';
+import { AppBrandingModal } from './AppBrandingModal';
 import {
   Camera,
   BookOpen,
@@ -29,6 +31,8 @@ import {
   CheckCircle2,
   HelpCircle,
   Sparkles,
+  Award,
+  Settings,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -161,6 +165,38 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navScrollRef = useRef<HTMLDivElement | null>(null);
 
+  // App Branding & Identity (Nama Aplikasi & Logo Kustom)
+  const { branding, updateBranding, resetBranding } = useAppBranding();
+  const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
+
+  const renderNavbarLogo = () => {
+    if (branding.logoUrl) {
+      return (
+        <img
+          src={branding.logoUrl}
+          alt={branding.appName}
+          className="w-full h-full object-contain p-0.5 rounded-xs"
+          onError={(e) => {
+            (e.target as HTMLElement).style.display = 'none';
+          }}
+        />
+      );
+    }
+    switch (branding.logoPreset) {
+      case 'tutwuri':
+        return <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />;
+      case 'gedung':
+        return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />;
+      case 'bintang':
+        return <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />;
+      case 'presensi':
+        return <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />;
+      case 'toga':
+      default:
+        return <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />;
+    }
+  };
+
   // Auto scroll active tab into view on mobile
   useEffect(() => {
     if (navScrollRef.current) {
@@ -178,8 +214,36 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Top Header */}
       <div className="max-w-6xl mx-auto px-2.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2 sm:gap-3">
-        {/* User Identity & Role with Running Text Marquee */}
-        <div className="flex items-center min-w-0 shrink">
+        {/* App Branding (Logo & Nama Aplikasi) & User Identity */}
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          {/* App Brand Badge / Admin Quick Edit */}
+          <button
+            id="btn-navbar-branding"
+            type="button"
+            onClick={() => currentUser.role === 'Admin' && setIsBrandingModalOpen(true)}
+            className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-lg bg-slate-800/90 border border-slate-700 flex items-center gap-1.5 sm:gap-2 shrink-0 transition ${
+              currentUser.role === 'Admin'
+                ? 'hover:border-sky-500/60 hover:bg-slate-700/80 cursor-pointer'
+                : 'cursor-default'
+            }`}
+            title={
+              currentUser.role === 'Admin'
+                ? `${branding.appName} - Klik untuk sesuaikan Logo & Nama Aplikasi`
+                : branding.appName
+            }
+          >
+            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-gradient-to-tr from-sky-500 to-teal-500 flex items-center justify-center overflow-hidden shrink-0">
+              {renderNavbarLogo()}
+            </div>
+            <span className="hidden sm:inline font-bold text-xs text-slate-100 tracking-tight max-w-[120px] md:max-w-[160px] truncate">
+              {branding.appName}
+            </span>
+            {currentUser.role === 'Admin' && (
+              <Settings className="w-3 h-3 text-slate-400 hidden lg:inline" />
+            )}
+          </button>
+
+          {/* User Identity & Role with Running Text Marquee */}
           {onOpenProfilSiswa && currentUser.role === 'Siswa' ? (
             <button
               type="button"
@@ -523,6 +587,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         </div>
       </div>
+
+      {/* App Branding & Logo Customization Modal */}
+      <AppBrandingModal
+        isOpen={isBrandingModalOpen}
+        onClose={() => setIsBrandingModalOpen(false)}
+        config={branding}
+        onSave={updateBranding}
+        onReset={resetBranding}
+      />
     </header>
   );
 };
