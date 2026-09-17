@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Activity,
@@ -36,6 +36,70 @@ interface UsageMonitoringProps {
   currentUser: User;
   onAddLog?: (kategori: any, aksi: string, deskripsi: string, status: 'sukses' | 'gagal') => void;
 }
+
+interface MetricInfoTooltipProps {
+  content: string;
+}
+
+const MetricInfoTooltip: React.FC<MetricInfoTooltipProps> = ({ content }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => setIsOpen(false)}
+    >
+      <button
+        type="button"
+        title={content}
+        aria-label={content}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }}
+        className="p-1 -m-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors focus:outline-hidden cursor-pointer active:scale-90"
+      >
+        <Info className="w-3.5 h-3.5 stroke-[1.8]" />
+      </button>
+
+      {/* Floating tooltip popover for mobile touch and desktop hover */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 4 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 w-52 sm:w-60 px-3 py-2 bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-xs text-white rounded-xl shadow-xl text-[11px] leading-relaxed font-normal text-center pointer-events-auto border border-slate-700/60"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {content}
+            {/* Tooltip triangle pointer */}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900/95 dark:border-t-slate-800/95" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, onAddLog }) => {
   const [telemetry, setTelemetry] = useState<RealtimeTelemetryState>(usageTracker.getState());
@@ -558,12 +622,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                     <span className="text-slate-700 dark:text-slate-300 font-medium">
                       Deployment Storage
                     </span>
-                    <span
-                      title="Ruang penyimpanan hasil build deployment web"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
+                    <MetricInfoTooltip content="Ruang penyimpanan hasil build deployment web" />
                   </div>
                   <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                     {vc.deploymentStorageMB.toString().replace('.', ',')} MB / {vc.deploymentStorageLimitGB} GB
@@ -577,12 +636,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                     <span className="text-slate-700 dark:text-slate-300 font-medium">
                       Edge Requests
                     </span>
-                    <span
-                      title="Permintaan HTTP ke CDN Edge Vercel"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
+                    <MetricInfoTooltip content="Permintaan HTTP ke CDN Edge Vercel" />
                   </div>
                   <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                     {(vc.edgeRequests / 1000).toFixed(1)}K / {(vc.edgeRequestsLimit / 1000000).toFixed(0)}M
@@ -596,12 +650,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                     <span className="text-slate-700 dark:text-slate-300 font-medium">
                       Functions Storage
                     </span>
-                    <span
-                      title="Penyimpanan serverless bundle functions"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
+                    <MetricInfoTooltip content="Penyimpanan serverless bundle functions" />
                   </div>
                   <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                     {vc.functionsStorageMB.toString().replace('.', ',')} MB / {vc.functionsStorageLimitGB} GB
@@ -615,12 +664,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                     <span className="text-slate-700 dark:text-slate-300 font-medium">
                       Fast Data Transfer
                     </span>
-                    <span
-                      title="Bandwidth pengiriman konten cepat CDN"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
+                    <MetricInfoTooltip content="Bandwidth pengiriman konten cepat CDN" />
                   </div>
                   <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                     {vc.fastDataTransferMB.toString().replace('.', ',')} MB / {vc.fastDataTransferLimitGB} GB
@@ -636,7 +680,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.25, ease: 'easeInOut' }}
-                      className="space-y-3 overflow-hidden"
+                      className="space-y-3"
                     >
                       {/* 5. Edge Request CPU Duration */}
                       <div className="flex items-center justify-between py-1 text-xs">
@@ -645,12 +689,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
                             Edge Request CPU Duration
                           </span>
-                          <span
-                            title="Durasi waktu eksekusi CPU di edge"
-                            className="cursor-pointer text-slate-400 hover:text-slate-600"
-                          >
-                            <Info className="w-3 h-3" />
-                          </span>
+                          <MetricInfoTooltip content="Durasi waktu eksekusi CPU di edge" />
                         </div>
                         <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                           {vc.edgeRequestCpuDurationSec}s / {vc.edgeRequestCpuDurationLimitHours}h
@@ -664,12 +703,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
                             Fast Origin Transfer
                           </span>
-                          <span
-                            title="Transfer data dari origin server ke edge"
-                            className="cursor-pointer text-slate-400 hover:text-slate-600"
-                          >
-                            <Info className="w-3 h-3" />
-                          </span>
+                          <MetricInfoTooltip content="Transfer data dari origin server ke edge" />
                         </div>
                         <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                           {vc.fastOriginTransferMB.toString().replace('.', ',')} MB / {vc.fastOriginTransferLimitGB} GB
@@ -683,12 +717,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
                             Function Invocations
                           </span>
-                          <span
-                            title="Jumlah pemanggilan serverless functions"
-                            className="cursor-pointer text-slate-400 hover:text-slate-600"
-                          >
-                            <Info className="w-3 h-3" />
-                          </span>
+                          <MetricInfoTooltip content="Jumlah pemanggilan serverless functions" />
                         </div>
                         <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                           {vc.functionInvocations} / {(vc.functionInvocationsLimit / 1000000).toFixed(0)}M
@@ -702,12 +731,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
                             Fluid Active CPU
                           </span>
-                          <span
-                            title="Waktu pemakaian CPU aktif fluid"
-                            className="cursor-pointer text-slate-400 hover:text-slate-600"
-                          >
-                            <Info className="w-3 h-3" />
-                          </span>
+                          <MetricInfoTooltip content="Waktu pemakaian CPU aktif fluid" />
                         </div>
                         <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                           {vc.fluidActiveCpuSec}s / {vc.fluidActiveCpuLimitHours}h
@@ -721,12 +745,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
                             Fluid Provisioned Memory
                           </span>
-                          <span
-                            title="Alokasi memori provisioned untuk eksekusi serverless"
-                            className="cursor-pointer text-slate-400 hover:text-slate-600"
-                          >
-                            <Info className="w-3 h-3" />
-                          </span>
+                          <MetricInfoTooltip content="Alokasi memori provisioned untuk eksekusi serverless" />
                         </div>
                         <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                           {vc.fluidProvisionedMemoryGBHrs} GB-Hrs / {vc.fluidProvisionedMemoryLimitGBHrs} GB-Hrs
@@ -740,12 +759,7 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
                             Private Data Transfer
                           </span>
-                          <span
-                            title="Transfer data privat antar layanan internal"
-                            className="cursor-pointer text-slate-400 hover:text-slate-600"
-                          >
-                            <Info className="w-3 h-3" />
-                          </span>
+                          <MetricInfoTooltip content="Transfer data privat antar layanan internal" />
                         </div>
                         <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
                           {vc.privateDataTransferBytes} B
