@@ -5,7 +5,6 @@ import {
   BellOff,
   Volume2,
   VolumeX,
-  Compass,
   Clock,
   MapPin,
   Calendar,
@@ -33,7 +32,6 @@ interface PrayerTimeAlertModalProps {
   onStopAdhan?: () => void;
   isAdhanPlaying?: boolean;
   onOpenFullSchedule?: () => void;
-  qiblaAngle?: number;
 }
 
 export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
@@ -53,7 +51,6 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
   onStopAdhan,
   isAdhanPlaying = false,
   onOpenFullSchedule,
-  qiblaAngle = 294,
 }) => {
   if (!isOpen) return null;
 
@@ -128,7 +125,7 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
             )}
           </div>
 
-          {/* Modal Body: Advice, Qibla, & On/Off Toggles */}
+          {/* Modal Body: Advice & On/Off Toggles */}
           <div className="p-4 sm:p-5 space-y-3.5">
             {/* Inspirational Islamic Message */}
             <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/80 text-center space-y-1.5">
@@ -140,29 +137,22 @@ export const PrayerTimeAlertModal: React.FC<PrayerTimeAlertModalProps> = ({
               </p>
             </div>
 
-            {/* Quick Qibla Info Badge */}
-            <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2 text-slate-300">
-                <Compass className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Arah Kiblat:</span>
-                <span className="font-bold text-white font-mono">{qiblaAngle}°</span>
-                <span className="text-[10px] text-slate-400">(Barat Laut)</span>
-              </div>
-
-              {onOpenFullSchedule && (
+            {/* Link to Full Schedule */}
+            {onOpenFullSchedule && (
+              <div className="flex items-center justify-end pt-0.5">
                 <button
                   type="button"
                   onClick={() => {
                     onClose();
                     onOpenFullSchedule();
                   }}
-                  className="text-emerald-400 hover:text-emerald-300 text-xs font-semibold inline-flex items-center gap-1 cursor-pointer transition"
+                  className="text-emerald-400 hover:text-emerald-300 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition hover:underline"
                 >
-                  <span>Jadwal Lengkap</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <span>Buka Jadwal Sholat Lengkap 5 Waktu</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* ON / OFF FEATURE TOGGLE BAR */}
             {/* Live Adhan Playing Banner */}

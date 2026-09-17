@@ -12,7 +12,6 @@ import { JadwalSholatModal } from './JadwalSholatModal';
 export const RealtimeClockBar: React.FC = () => {
   const [is24Hour, setIs24Hour] = useState<boolean>(true);
   const [isPrayerModalOpen, setIsPrayerModalOpen] = useState<boolean>(false);
-  const [prayerModalTab, setPrayerModalTab] = useState<'schedule' | 'qibla'>('schedule');
   const [isReminderEnabled, setIsReminderEnabled] = useState<boolean>(() =>
     getSavedPrayerReminderConfig().enabled
   );
@@ -187,11 +186,10 @@ export const RealtimeClockBar: React.FC = () => {
         </div>
       </div>
 
-      {/* Jadwal Sholat 5 Waktu & Arah Kiblat Modal */}
+      {/* Jadwal Sholat 5 Waktu Modal */}
       <JadwalSholatModal
         isOpen={isPrayerModalOpen}
         onClose={() => setIsPrayerModalOpen(false)}
-        initialTab={prayerModalTab}
       />
     </>
   );

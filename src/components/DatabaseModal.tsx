@@ -136,7 +136,7 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                 Firebase Firestore
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
-                ID: {(firebaseConfig as any).firestoreDatabaseId || 'ai-studio-presensipklsmk-8eff2682-8acd-4b71-b845-229e818281f0'}
+                ID: {(firebaseConfig as any).firestoreDatabaseId || '(default)'}
               </p>
             </div>
 

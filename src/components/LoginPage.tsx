@@ -42,7 +42,6 @@ import {
   Bell,
   BellOff,
   Award,
-  Compass,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -105,7 +104,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [roleMismatch, setRoleMismatch] = useState<RoleMismatchInfo | null>(null);
   const [isAdminHelpOpen, setIsAdminHelpOpen] = useState(false);
   const [isPrayerModalOpen, setIsPrayerModalOpen] = useState(false);
-  const [prayerModalTab, setPrayerModalTab] = useState<'schedule' | 'qibla'>('schedule');
   const [isReminderEnabled, setIsReminderEnabled] = useState<boolean>(() =>
     getSavedPrayerReminderConfig().enabled
   );
@@ -129,7 +127,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     countdown,
     hijriFormatted,
     shortLocation,
-    qiblaAngle,
   } = usePrayerTimes();
 
   // App Branding & Identity (Nama Aplikasi & Logo Kustom)
@@ -523,7 +520,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             id="login-jadwal-sholat-card"
             className="w-full text-left p-2 rounded-xl bg-white/95 dark:bg-slate-900/90 border border-emerald-500/25 hover:border-emerald-500/50 dark:border-emerald-500/25 dark:hover:border-emerald-400/50 shadow-xs transition-all group cursor-pointer"
             onClick={() => {
-              setPrayerModalTab('schedule');
               setIsPrayerModalOpen(true);
             }}
             title={`Jadwal Sholat 5 Waktu di ${locationState.locationName}. Klik untuk detail`}
@@ -594,31 +590,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
                 </div>
               ))}
-            </div>
-
-            {/* Direct Qibla Compass Trigger Row - Compact */}
-            <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-800/80 text-[10px]">
-              <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                <Compass className="w-3 h-3 text-emerald-500 shrink-0" />
-                <span>Kiblat:</span>
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{qiblaAngle}°</span>
-                <span className="text-[9px] text-slate-400">(Barat Laut)</span>
-              </div>
-
-              <button
-                type="button"
-                id="btn-login-open-qibla"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPrayerModalTab('qibla');
-                  setIsPrayerModalOpen(true);
-                }}
-                className="inline-flex items-center gap-0.5 font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition cursor-pointer text-[9.5px] group/qibla"
-                title="Buka Kompas Arah Kiblat interaktif dengan Gyroscope HP"
-              >
-                <span>Kompas HP</span>
-                <ChevronRight className="w-2.5 h-2.5 group-hover/qibla:translate-x-0.5 transition-transform" />
-              </button>
             </div>
           </div>
         </div>
@@ -864,11 +835,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         onClose={() => setIsAdminHelpOpen(false)}
       />
 
-      {/* Jadwal Sholat 5 Waktu & Arah Kiblat Modal */}
+      {/* Jadwal Sholat 5 Waktu Modal */}
       <JadwalSholatModal
         isOpen={isPrayerModalOpen}
         onClose={() => setIsPrayerModalOpen(false)}
-        initialTab={prayerModalTab}
       />
     </div>
   );

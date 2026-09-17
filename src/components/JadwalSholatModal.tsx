@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MapPin,
-  Compass,
   RefreshCw,
   Sun,
   Sunset,
@@ -33,7 +32,6 @@ import {
   triggerTestPrayerAlert,
   PRAYER_REMINDER_CONFIG_EVENT,
 } from '../utils/prayerTimesService';
-import { QiblaCompass } from './QiblaCompass';
 
 import {
   playAdhanAudio,
@@ -45,13 +43,11 @@ import {
 interface JadwalSholatModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'schedule' | 'qibla';
 }
 
 export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
   isOpen,
   onClose,
-  initialTab = 'schedule',
 }) => {
   const {
     currentDate,
@@ -60,10 +56,8 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
     prayerTimes,
     countdown,
     hijriFormatted,
-    qiblaAngle,
   } = usePrayerTimes();
 
-  const [activeTab, setActiveTab] = useState<'schedule' | 'qibla'>(initialTab);
   const [isPlayingAdhan, setIsPlayingAdhan] = useState<boolean>(() => isAdhanPlaying());
 
   useEffect(() => {
@@ -71,12 +65,6 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
       setIsPlayingAdhan(playing);
     });
   }, []);
-
-  useEffect(() => {
-    if (isOpen) {
-      setActiveTab(initialTab || 'schedule');
-    }
-  }, [isOpen, initialTab]);
 
   const [isLoadingLocation, setIsLoadingLocation] = useState<boolean>(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -341,40 +329,6 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
             </div>
           </div>
 
-          {/* Modal Tab Switcher: Jadwal Sholat vs Kompas Kiblat Gyroscope */}
-          <div className="flex border-b border-slate-800 bg-slate-950/90 px-4 pt-2 gap-2">
-            <button
-              id="tab-jadwal-sholat-list"
-              type="button"
-              onClick={() => setActiveTab('schedule')}
-              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-2 cursor-pointer border-t border-x ${
-                activeTab === 'schedule'
-                  ? 'bg-slate-900 border-slate-700 text-emerald-400 border-b-slate-900 -mb-px'
-                  : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Jadwal Sholat</span>
-            </button>
-
-            <button
-              id="tab-kompas-kiblat-gyro"
-              type="button"
-              onClick={() => setActiveTab('qibla')}
-              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-2 cursor-pointer border-t border-x ${
-                activeTab === 'qibla'
-                  ? 'bg-slate-900 border-slate-700 text-emerald-400 border-b-slate-900 -mb-px'
-                  : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Kompas Kiblat (Gyroscope)</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                Live
-              </span>
-            </button>
-          </div>
-
           {/* Modal Body */}
           <div className="p-4 sm:p-5 space-y-4 max-h-[72vh] overflow-y-auto">
             {/* Geolocation Bar & Actions (shared across both tabs) */}
@@ -456,10 +410,8 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
               )}
             </div>
 
-            {activeTab === 'schedule' ? (
-              <>
-                {/* 5 Main Prayer Times Grid */}
-                <div>
+            {/* 5 Main Prayer Times Grid */}
+            <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-emerald-400" />
@@ -764,65 +716,6 @@ export const JadwalSholatModal: React.FC<JadwalSholatModalProps> = ({
                 </div>
               </div>
             </div>
-
-            {/* Qibla Direction & Coordinates Section */}
-            <div className="p-3.5 rounded-xl bg-gradient-to-r from-slate-800/90 to-slate-900 border border-slate-700 flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div className="relative w-12 h-12 rounded-full bg-slate-950 border-2 border-emerald-500/50 flex items-center justify-center shadow-inner">
-                  {/* Qibla Compass Needle Indicator */}
-                  <div
-                    className="absolute w-1 h-10 flex flex-col items-center justify-between transition-transform duration-700"
-                    style={{ transform: `rotate(${qiblaAngle}deg)` }}
-                  >
-                    <div className="w-2.5 h-2.5 bg-rose-500 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.8)]" title="Arah Kiblat" />
-                    <div className="w-1.5 h-1.5 bg-slate-600 rounded-full" />
-                  </div>
-                  <Compass className="w-5 h-5 text-emerald-400" />
-                </div>
-
-                <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <span>Arah Kiblat (Ka'bah):</span>
-                    <span className="text-emerald-400 font-mono font-extrabold text-sm">
-                      {qiblaAngle}°
-                    </span>
-                    <span className="text-[10px] text-slate-400">(Barat Laut)</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Koordinat: {locationState.lat.toFixed(4)}°, {locationState.lng.toFixed(4)}°
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 ml-auto sm:ml-0 flex-wrap">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-300">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Kemenag Standar</span>
-                </div>
-
-                <button
-                  type="button"
-                  id="btn-open-gyro-compass"
-                  onClick={() => setActiveTab('qibla')}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95"
-                >
-                  <Compass className="w-3.5 h-3.5" />
-                  <span>Buka Kompas Gyroscope &rarr;</span>
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          /* TAB 2: LIVE GYROSCOPE QIBLA COMPASS */
-          <div className="py-1">
-            <QiblaCompass
-              qiblaAngle={qiblaAngle}
-              latitude={locationState.lat}
-              longitude={locationState.lng}
-              locationName={locationState.locationName}
-            />
-          </div>
-        )}
           </div>
 
           {/* Footer Note */}
