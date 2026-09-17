@@ -546,18 +546,6 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                     {vc.period}
                   </span>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      alert(
-                        'Presensi PKL SMK berjalan optimal pada Hobby/Free Plan Vercel. Penggunaan masih sangat jauh di bawah batas limit (kuota aman).'
-                      );
-                    }}
-                    className="px-3 py-1 bg-black hover:bg-slate-800 text-white rounded-md text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
-                  >
-                    Upgrade
-                  </button>
                 </div>
               </div>
 
@@ -639,129 +627,149 @@ export const UsageMonitoring: React.FC<UsageMonitoringProps> = ({ currentUser, o
                   </span>
                 </div>
 
-                {/* 5. Edge Request CPU Duration */}
-                <div className="flex items-center justify-between py-1 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
-                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                      Edge Request CPU Duration
-                    </span>
-                    <span
-                      title="Durasi waktu eksekusi CPU di edge"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
+                {/* Collapsible secondary metrics (Items 5 to 10) */}
+                <AnimatePresence initial={false}>
+                  {isVercelExpanded && (
+                    <motion.div
+                      key="vercel-secondary-metrics"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25, ease: 'easeInOut' }}
+                      className="space-y-3 overflow-hidden"
                     >
-                      <Info className="w-3 h-3" />
-                    </span>
-                  </div>
-                  <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
-                    {vc.edgeRequestCpuDurationSec}s / {vc.edgeRequestCpuDurationLimitHours}h
-                  </span>
-                </div>
+                      {/* 5. Edge Request CPU Duration */}
+                      <div className="flex items-center justify-between py-1 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            Edge Request CPU Duration
+                          </span>
+                          <span
+                            title="Durasi waktu eksekusi CPU di edge"
+                            className="cursor-pointer text-slate-400 hover:text-slate-600"
+                          >
+                            <Info className="w-3 h-3" />
+                          </span>
+                        </div>
+                        <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
+                          {vc.edgeRequestCpuDurationSec}s / {vc.edgeRequestCpuDurationLimitHours}h
+                        </span>
+                      </div>
 
-                {/* 6. Fast Origin Transfer */}
-                <div className="flex items-center justify-between py-1 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
-                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                      Fast Origin Transfer
-                    </span>
-                    <span
-                      title="Transfer data dari origin server ke edge"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
-                  </div>
-                  <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
-                    {vc.fastOriginTransferMB.toString().replace('.', ',')} MB / {vc.fastOriginTransferLimitGB} GB
-                  </span>
-                </div>
+                      {/* 6. Fast Origin Transfer */}
+                      <div className="flex items-center justify-between py-1 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            Fast Origin Transfer
+                          </span>
+                          <span
+                            title="Transfer data dari origin server ke edge"
+                            className="cursor-pointer text-slate-400 hover:text-slate-600"
+                          >
+                            <Info className="w-3 h-3" />
+                          </span>
+                        </div>
+                        <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
+                          {vc.fastOriginTransferMB.toString().replace('.', ',')} MB / {vc.fastOriginTransferLimitGB} GB
+                        </span>
+                      </div>
 
-                {/* 7. Function Invocations */}
-                <div className="flex items-center justify-between py-1 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
-                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                      Function Invocations
-                    </span>
-                    <span
-                      title="Jumlah pemanggilan serverless functions"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
-                  </div>
-                  <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
-                    {vc.functionInvocations} / {(vc.functionInvocationsLimit / 1000000).toFixed(0)}M
-                  </span>
-                </div>
+                      {/* 7. Function Invocations */}
+                      <div className="flex items-center justify-between py-1 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            Function Invocations
+                          </span>
+                          <span
+                            title="Jumlah pemanggilan serverless functions"
+                            className="cursor-pointer text-slate-400 hover:text-slate-600"
+                          >
+                            <Info className="w-3 h-3" />
+                          </span>
+                        </div>
+                        <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
+                          {vc.functionInvocations} / {(vc.functionInvocationsLimit / 1000000).toFixed(0)}M
+                        </span>
+                      </div>
 
-                {/* 8. Fluid Active CPU */}
-                <div className="flex items-center justify-between py-1 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
-                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                      Fluid Active CPU
-                    </span>
-                    <span
-                      title="Waktu pemakaian CPU aktif fluid"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
-                  </div>
-                  <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
-                    {vc.fluidActiveCpuSec}s / {vc.fluidActiveCpuLimitHours}h
-                  </span>
-                </div>
+                      {/* 8. Fluid Active CPU */}
+                      <div className="flex items-center justify-between py-1 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            Fluid Active CPU
+                          </span>
+                          <span
+                            title="Waktu pemakaian CPU aktif fluid"
+                            className="cursor-pointer text-slate-400 hover:text-slate-600"
+                          >
+                            <Info className="w-3 h-3" />
+                          </span>
+                        </div>
+                        <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
+                          {vc.fluidActiveCpuSec}s / {vc.fluidActiveCpuLimitHours}h
+                        </span>
+                      </div>
 
-                {/* 9. Fluid Provisioned Memory */}
-                <div className="flex items-center justify-between py-1 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
-                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                      Fluid Provisioned Memory
-                    </span>
-                    <span
-                      title="Alokasi memori provisioned untuk eksekusi serverless"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
-                  </div>
-                  <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
-                    {vc.fluidProvisionedMemoryGBHrs} GB-Hrs / {vc.fluidProvisionedMemoryLimitGBHrs} GB-Hrs
-                  </span>
-                </div>
+                      {/* 9. Fluid Provisioned Memory */}
+                      <div className="flex items-center justify-between py-1 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-sky-500 flex items-center justify-center shrink-0"></span>
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            Fluid Provisioned Memory
+                          </span>
+                          <span
+                            title="Alokasi memori provisioned untuk eksekusi serverless"
+                            className="cursor-pointer text-slate-400 hover:text-slate-600"
+                          >
+                            <Info className="w-3 h-3" />
+                          </span>
+                        </div>
+                        <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
+                          {vc.fluidProvisionedMemoryGBHrs} GB-Hrs / {vc.fluidProvisionedMemoryLimitGBHrs} GB-Hrs
+                        </span>
+                      </div>
 
-                {/* 10. Private Data Transfer */}
-                <div className="flex items-center justify-between py-1 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 h-5 rounded-full border-2 border-slate-200 flex items-center justify-center shrink-0"></span>
-                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                      Private Data Transfer
-                    </span>
-                    <span
-                      title="Transfer data privat antar layanan internal"
-                      className="cursor-pointer text-slate-400 hover:text-slate-600"
-                    >
-                      <Info className="w-3 h-3" />
-                    </span>
-                  </div>
-                  <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
-                    {vc.privateDataTransferBytes} B
-                  </span>
-                </div>
+                      {/* 10. Private Data Transfer */}
+                      <div className="flex items-center justify-between py-1 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-5 h-5 rounded-full border-2 border-slate-200 flex items-center justify-center shrink-0"></span>
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            Private Data Transfer
+                          </span>
+                          <span
+                            title="Transfer data privat antar layanan internal"
+                            className="cursor-pointer text-slate-400 hover:text-slate-600"
+                          >
+                            <Info className="w-3 h-3" />
+                          </span>
+                        </div>
+                        <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold">
+                          {vc.privateDataTransferBytes} B
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Collapse / Expand Toggle Button (Matching User's Image 1) */}
                 <div className="pt-2 flex justify-center">
                   <button
+                    id="btn-toggle-vercel-details"
                     type="button"
-                    onClick={() => setIsVercelExpanded(!isVercelExpanded)}
-                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    onClick={() => setIsVercelExpanded((prev) => !prev)}
+                    className="w-7 h-7 rounded-full border border-slate-900 dark:border-slate-200 flex items-center justify-center text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition shadow-2xs cursor-pointer active:scale-95"
                     title={isVercelExpanded ? 'Sembunyikan detail' : 'Tampilkan lebih banyak'}
+                    aria-label={isVercelExpanded ? 'Sembunyikan detail' : 'Tampilkan lebih banyak'}
                   >
-                    {isVercelExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    {isVercelExpanded ? (
+                      <ChevronUp className="w-4 h-4 stroke-[2.5]" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+                    )}
                   </button>
                 </div>
               </div>
