@@ -93,7 +93,7 @@ export const ROLE_ALLOWED_TABS: Record<Role, string[]> = {
   Siswa: ['presensi', 'statistik', 'jurnal', 'laporan', 'info-pkl'],
   'Guru Pembimbing': ['presensi', 'jurnal', 'laporan', 'log-aktivitas'],
   DUDI: ['presensi', 'jurnal', 'laporan', 'info-dudi'],
-  Admin: ['presensi', 'master', 'jurnal', 'laporan', 'log-aktivitas'],
+  Admin: ['presensi', 'master', 'jurnal', 'laporan', 'usage', 'log-aktivitas'],
 };
 
 // Cookie helpers for robust fallback in privacy/iframe/PWA modes

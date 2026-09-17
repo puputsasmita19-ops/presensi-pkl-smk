@@ -16,6 +16,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { usageTracker } from './usageTrackerService';
 import {
   Siswa,
   DUDI,
@@ -45,6 +46,7 @@ export const COLLECTIONS = {
 export async function fetchAllSiswaFromFirestore(): Promise<Siswa[]> {
   try {
     const snap = await getDocs(collection(db, COLLECTIONS.SISWA));
+    if (snap.docs.length > 0) usageTracker.recordRead(snap.docs.length);
     return snap.docs.map((d) => d.data() as Siswa);
   } catch (err) {
     console.error('Gagal mengambil data siswa dari Firestore:', err);
@@ -57,6 +59,7 @@ export function subscribeSiswa(callback: (siswa: Siswa[]) => void) {
     collection(db, COLLECTIONS.SISWA),
     (snap) => {
       const data = snap.docs.map((d) => d.data() as Siswa);
+      if (data.length > 0) usageTracker.recordRead(data.length);
       callback(data);
     },
     (err) => console.warn('Firestore Siswa listener warning:', err)
@@ -66,6 +69,7 @@ export function subscribeSiswa(callback: (siswa: Siswa[]) => void) {
 export async function saveSiswaToFirestore(siswa: Siswa): Promise<boolean> {
   try {
     await setDoc(doc(db, COLLECTIONS.SISWA, siswa.id_siswa), siswa, { merge: true });
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menyimpan siswa ke Firestore:', err);
@@ -76,6 +80,7 @@ export async function saveSiswaToFirestore(siswa: Siswa): Promise<boolean> {
 export async function deleteSiswaFromFirestore(id_siswa: string): Promise<boolean> {
   try {
     await deleteDoc(doc(db, COLLECTIONS.SISWA, id_siswa));
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menghapus siswa dari Firestore:', err);
@@ -87,6 +92,7 @@ export async function deleteSiswaFromFirestore(id_siswa: string): Promise<boolea
 export async function fetchAllDudiFromFirestore(): Promise<DUDI[]> {
   try {
     const snap = await getDocs(collection(db, COLLECTIONS.DUDI));
+    if (snap.docs.length > 0) usageTracker.recordRead(snap.docs.length);
     return snap.docs.map((d) => d.data() as DUDI);
   } catch (err) {
     console.error('Gagal mengambil data DUDI dari Firestore:', err);
@@ -99,6 +105,7 @@ export function subscribeDudi(callback: (dudi: DUDI[]) => void) {
     collection(db, COLLECTIONS.DUDI),
     (snap) => {
       const data = snap.docs.map((d) => d.data() as DUDI);
+      if (data.length > 0) usageTracker.recordRead(data.length);
       callback(data);
     },
     (err) => console.warn('Firestore DUDI listener warning:', err)
@@ -108,6 +115,7 @@ export function subscribeDudi(callback: (dudi: DUDI[]) => void) {
 export async function saveDudiToFirestore(dudi: DUDI): Promise<boolean> {
   try {
     await setDoc(doc(db, COLLECTIONS.DUDI, dudi.id_dudi), dudi, { merge: true });
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menyimpan DUDI ke Firestore:', err);
@@ -118,6 +126,7 @@ export async function saveDudiToFirestore(dudi: DUDI): Promise<boolean> {
 export async function deleteDudiFromFirestore(id_dudi: string): Promise<boolean> {
   try {
     await deleteDoc(doc(db, COLLECTIONS.DUDI, id_dudi));
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menghapus DUDI dari Firestore:', err);
@@ -161,6 +170,7 @@ export async function saveGuruToFirestore(guru: GuruPembimbing): Promise<boolean
 export async function fetchAllPresensiFromFirestore(): Promise<Presensi[]> {
   try {
     const snap = await getDocs(collection(db, COLLECTIONS.PRESENSI));
+    if (snap.docs.length > 0) usageTracker.recordRead(snap.docs.length);
     return snap.docs.map((d) => d.data() as Presensi);
   } catch (err) {
     console.error('Gagal mengambil presensi dari Firestore:', err);
@@ -173,6 +183,7 @@ export function subscribePresensi(callback: (presensi: Presensi[]) => void) {
     collection(db, COLLECTIONS.PRESENSI),
     (snap) => {
       const data = snap.docs.map((d) => d.data() as Presensi);
+      if (data.length > 0) usageTracker.recordRead(data.length);
       callback(data);
     },
     (err) => console.warn('Firestore Presensi listener warning:', err)
@@ -187,6 +198,7 @@ export async function savePresensiToFirestore(presensi: Presensi): Promise<boole
       // Pertahankan thumbnail atau gunakan URL drive
     }
     await setDoc(doc(db, COLLECTIONS.PRESENSI, presensi.id_presensi), cleanPresensi, { merge: true });
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menyimpan presensi ke Firestore:', err);
@@ -197,6 +209,7 @@ export async function savePresensiToFirestore(presensi: Presensi): Promise<boole
 export async function deletePresensiFromFirestore(id_presensi: string): Promise<boolean> {
   try {
     await deleteDoc(doc(db, COLLECTIONS.PRESENSI, id_presensi));
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menghapus presensi dari Firestore:', err);
@@ -208,6 +221,7 @@ export async function deletePresensiFromFirestore(id_presensi: string): Promise<
 export async function fetchAllJurnalFromFirestore(): Promise<JurnalHarian[]> {
   try {
     const snap = await getDocs(collection(db, COLLECTIONS.JURNAL));
+    if (snap.docs.length > 0) usageTracker.recordRead(snap.docs.length);
     return snap.docs.map((d) => d.data() as JurnalHarian);
   } catch (err) {
     console.error('Gagal mengambil jurnal dari Firestore:', err);
@@ -220,6 +234,7 @@ export function subscribeJurnal(callback: (jurnal: JurnalHarian[]) => void) {
     collection(db, COLLECTIONS.JURNAL),
     (snap) => {
       const data = snap.docs.map((d) => d.data() as JurnalHarian);
+      if (data.length > 0) usageTracker.recordRead(data.length);
       callback(data);
     },
     (err) => console.warn('Firestore Jurnal listener warning:', err)
@@ -229,6 +244,7 @@ export function subscribeJurnal(callback: (jurnal: JurnalHarian[]) => void) {
 export async function saveJurnalToFirestore(jurnal: JurnalHarian): Promise<boolean> {
   try {
     await setDoc(doc(db, COLLECTIONS.JURNAL, jurnal.id_jurnal), jurnal, { merge: true });
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menyimpan jurnal ke Firestore:', err);
@@ -239,6 +255,7 @@ export async function saveJurnalToFirestore(jurnal: JurnalHarian): Promise<boole
 export async function deleteJurnalFromFirestore(id_jurnal: string): Promise<boolean> {
   try {
     await deleteDoc(doc(db, COLLECTIONS.JURNAL, id_jurnal));
+    usageTracker.recordWrite(1);
     return true;
   } catch (err) {
     console.error('Gagal menghapus jurnal dari Firestore:', err);

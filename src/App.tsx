@@ -42,6 +42,7 @@ import { MasterDataAdmin } from './components/MasterDataAdmin';
 import { StatistikDataAdmin } from './components/StatistikDataAdmin';
 import { StatistikKehadiranSiswa } from './components/StatistikKehadiranSiswa';
 import { LaporanPresensi } from './components/LaporanPresensi';
+import { UsageMonitoring } from './components/UsageMonitoring';
 import { LogAktivitasViewer } from './components/LogAktivitasViewer';
 import { InfoPKLSiswa } from './components/InfoPKLSiswa';
 import { ProfilIndustriDUDI } from './components/ProfilIndustriDUDI';
@@ -1464,6 +1465,13 @@ export default function App() {
             presensiList={presensiList}
             onSelectSiswaDetail={handleOpenSiswaDetail}
             onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        )}
+
+        {activeTab === 'usage' && currentUser.role === 'Admin' && (
+          <UsageMonitoring
+            currentUser={currentUser}
+            onAddLog={(kategori, aksi, deskripsi, status) => addLog(kategori, aksi, deskripsi, status)}
           />
         )}
 

@@ -33,6 +33,7 @@ import {
   Sparkles,
   Award,
   Settings,
+  Gauge,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -654,6 +655,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       { id: 'master', label: 'Master Data & Akun', shortLabel: 'Master Data', icon: Database },
                       { id: 'jurnal', label: 'Persetujuan Jurnal', shortLabel: 'Jurnal Siswa', icon: BookOpen },
                       { id: 'laporan', label: 'Laporan & Rekap Global', shortLabel: 'Laporan Global', icon: FileText },
+                      { id: 'usage', label: 'Usage Firebase & Vercel', shortLabel: 'Usage Cloud', icon: Gauge },
                       { id: 'log-aktivitas', label: 'Log Aktivitas Sistem', shortLabel: 'Log Sistem', icon: Activity },
                     ];
                 }
